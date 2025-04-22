@@ -5,6 +5,24 @@
   "references": [
     {
       "path": "./apps/nihal_ice_factory"
+    },
+    {
+      "path": "./packages/services-e2e"
+    },
+    {
+      "path": "./packages/services"
+    },
+    {
+      "path": "./packages/ui"
+    },
+    {
+      "path": "./libs/backend-utils"
+    },
+    {
+      "path": "./libs/shared-services"
+    },
+    {
+      "path": "./libs/shared-models"
     }
   ]
 }
