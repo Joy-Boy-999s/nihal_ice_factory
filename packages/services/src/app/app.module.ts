@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { ConfigModule } from '@nestjs/config';
 import { Module } from '@nestjs/common';
 import { UserModule } from './user/user.module';
+import { SalesModule } from './Sales/sales.module';
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { UserModule } from './user/user.module';
       signOptions: { expiresIn: '7d' },
     }),
     DatabaseModule,
-    UserModule
+    UserModule,SalesModule
   ],
   controllers: [AppController],
   providers: [AppService],
