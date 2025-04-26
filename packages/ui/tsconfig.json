@@ -3,6 +3,12 @@
   "include": [],
   "references": [
     {
+      "path": "../../libs/shared-models"
+    },
+    {
+      "path": "../../libs/shared-services"
+    },
+    {
       "path": "./tsconfig.app.json"
     }
   ],

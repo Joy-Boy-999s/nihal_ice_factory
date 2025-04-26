@@ -70,8 +70,9 @@ export class UserService {
         throw new Error('Missing ENCRYPTION_KEY');
       }
 
-      const decryptedPassword = CryptoJS.AES.decrypt(reqModel.password, secretKey).toString(CryptoJS.enc.Utf8);
-      const isPasswordValid = await bcrypt.compare(decryptedPassword, user.password);
+// Instead of decrypting, directly use the password
+      const isPasswordValid = await bcrypt.compare(reqModel.password, user.password);
+      // const isPasswordValid = await bcrypt.compare(decryptedPassword, user.password);
       if (!isPasswordValid) {
         return new CommonResponse(false, 401, 'Invalid credentials');
       }
