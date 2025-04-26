@@ -1,8 +1,7 @@
-import { Controller, Post, Body, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Body } from '@nestjs/common';
 import { UserService } from './user.service';
 import { ApiBody, ApiTags } from '@nestjs/swagger';
 import { CreateUserModel, CommonResponse, UserLoginModel, UserIdRequestModel, UpdateUserModel, ResetPassowordModel, EmailRequestModel } from '@nihal-ice-factory/shared-models';
-import { ExceptionHandler } from 'winston';
 
 export interface ScreenPreferencesModel {
   userId: string;

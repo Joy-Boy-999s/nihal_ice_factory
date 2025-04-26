@@ -3,7 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import * as nodemailer from 'nodemailer';
 import * as CryptoJS from 'crypto-js';
-import { CommonResponse, CreateUserModel, EmailRequestModel, ResetPassowordModel, UserIdRequestModel, UserLoginModel, UserRole, WelcomeRequestModel, UpdateUserModel } from '@nihal-ice-factory/shared-models';
+import { CommonResponse, CreateUserModel, EmailRequestModel, ResetPassowordModel, UserIdRequestModel, UserLoginModel, UserRole, UpdateUserModel } from '@nihal-ice-factory/shared-models';
 import { UserRepository } from './repository/user.repository';
 import { InjectRepository } from '@nestjs/typeorm';
 import { GenericTransactionManager } from '../../database/trasanction-manager';

@@ -1,27 +1,22 @@
-import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { AppController } from './app.controller';
+import { JwtModule } from '@nestjs/jwt';
 import { AppService } from './app.service';
-import { UserEntity } from './user/entities/user.entity';
+import { DatabaseModule } from '../database/database.module';
+import { AppController } from './app.controller';
 import { ConfigModule } from '@nestjs/config';
+import { Module } from '@nestjs/common';
 import { UserModule } from './user/user.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: '../../.env',
     }),
-    TypeOrmModule.forRoot({
-      type: 'mysql',
-      host: 'localhost',
-      port: 3306,
-      username: 'root',
-      password: '5082093',
-      database: 'Ice_Fac',
-      entities: [UserEntity],
-      synchronize: true,
+    JwtModule.register({
+      secret: process.env.JWT_SECRET,
+      signOptions: { expiresIn: '7d' },
     }),
-    TypeOrmModule.forFeature([UserEntity]),
+    DatabaseModule,
     UserModule
   ],
   controllers: [AppController],

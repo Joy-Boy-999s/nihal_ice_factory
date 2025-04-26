@@ -6,7 +6,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserEntity } from './entities/user.entity';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-// import { GenericTransactionManager } from './src/database/trasanction-manager';
 import { UserRepository } from './repository/user.repository';
 import { GenericTransactionManager } from '../../database/trasanction-manager';
 
