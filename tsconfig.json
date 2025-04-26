@@ -4,9 +4,6 @@
   "files": [],
   "references": [
     {
-      "path": "./apps/nihal_ice_factory"
-    },
-    {
       "path": "./packages/services-e2e"
     },
     {
