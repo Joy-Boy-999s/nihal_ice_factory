@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import './dashboard.css';
 import { motion } from 'framer-motion';
 import { Bar, Line } from 'react-chartjs-2';
+import Cookies from 'js-cookie';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -13,8 +14,13 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
+import Navbar from '../navbar/navbar';
+import { Dropdown, Menu } from 'antd';
+import menu from 'antd/es/menu';
+import { useNavigate } from 'react-router-dom';
+import { LogoutOutlined } from '@ant-design/icons'; 
 
-// Register Chart.js components
+
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -27,7 +33,20 @@ ChartJS.register(
 );
 
 const Dashboard: React.FC = () => {
-  // Sample data for charts
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [role,setRole]=useState<any>('USER')
+  const navigate = useNavigate();
+
+
+  useEffect ( ()=>{
+    const jsrole = Cookies.get('userRole')?.toUpperCase();
+    setRole(jsrole)
+  })
+
+  const toggleSidebar = () => {
+    setIsSidebarOpen(!isSidebarOpen);
+  };
+
   const thisMonthSalesData = {
     labels: ['Apr 1', 'Apr 5', 'Apr 10', 'Apr 15', 'Apr 20', 'Apr 23'],
     datasets: [
@@ -90,53 +109,62 @@ const Dashboard: React.FC = () => {
     },
   };
 
-  // Animation variants
   const containerVariants = {
-    hidden: { opacity: 0 },
+    hidden: { opacity: 0, scale: 0.95 },
     visible: {
       opacity: 1,
+      scale: 1,
       transition: {
         staggerChildren: 0.2,
+        ease: 'easeOut',
+        duration: 0.6,
       },
     },
   };
 
   const itemVariants = {
-    hidden: { y: 20, opacity: 0 },
-    visible: { y: 0, opacity: 1, transition: { duration: 0.5 } },
+    hidden: { y: 30, opacity: 0, scale: 0.9 },
+    visible: {
+      y: 0,
+      opacity: 1,
+      scale: 1,
+      transition: { duration: 0.6, ease: [0.6, -0.05, 0.01, 0.99] },
+    },
   };
+
+  const handleLogout = () => {
+    Cookies.remove('accessToken');
+    Cookies.remove('userRole');
+    navigate('/login');
+  };
+
+  const menu = (
+    <Menu>
+      <Menu.Item key="logout" onClick={handleLogout} icon={<LogoutOutlined />}>
+        Logout
+      </Menu.Item>
+    </Menu>
+  );
 
   return (
     <div className="dashboard-container">
-      <motion.aside
-        className="sidebar"
-        initial={{ x: -100, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        transition={{ duration: 0.6 }}
-      >
-        <div className="logo">
-          <span className="snowflake-icon">❄️</span>
-          <h1>Ice Factory</h1>
-        </div>
-        <nav>
-          <button className="nav-button active">Dashboard</button>
-          {/* <button className="nav-button">Production</button> */}
-          <button className="nav-button">Sales</button>
-          {/* <button className="nav-button">Settings</button> */}
-        </nav>
-      </motion.aside>
-      <div className="main-content">
+      <Navbar isOpen={isSidebarOpen} toggleSidebar={toggleSidebar} />
+      <div className={`main-content ${isSidebarOpen ? 'sidebar-open' : ''}`}>
         <motion.header
           className="header"
           initial={{ y: -50, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.5 }}
+          transition={{ duration: 0.7, ease: 'easeOut' }}
         >
-          <h2>Welcome to Ice Factory Dashboard</h2>
-          <div className="user-info">
-            <span className="user-icon">👤</span>
-            <span>Admin</span>
+          <div className="header-left">
+            <h2>Welcome to Ice Factory Dashboard</h2>
           </div>
+          <Dropdown overlay={menu} placement="bottomCenter" trigger={['hover']}>
+            <div className="user-info" style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
+              <span className="user-icon">👤</span>
+              <span>{role}</span>
+            </div>
+          </Dropdown>
         </motion.header>
         <motion.div
           className="content"
@@ -170,7 +198,7 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
             <div className="chart-card">
-              <h3>This Week's Sales</h3>
+              Moulik's Sales
               <div className="chart-wrapper">
                 <Bar data={thisWeekSalesData} options={chartOptions} />
               </div>
@@ -181,6 +209,7 @@ const Dashboard: React.FC = () => {
               className="action-button production"
               whileHover={{ scale: 1.05, boxShadow: '0 8px 20px rgba(0, 0, 0, 0.2)' }}
               whileTap={{ scale: 0.95 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 15 }}
             >
               Add Production
             </motion.button>
@@ -188,6 +217,7 @@ const Dashboard: React.FC = () => {
               className="action-button sale"
               whileHover={{ scale: 1.05, boxShadow: '0 8px 20px rgba(0, 0, 0, 0.2)' }}
               whileTap={{ scale: 0.95 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 15 }}
             >
               New Sale
             </motion.button>
