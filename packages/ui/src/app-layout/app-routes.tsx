@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Route, Routes, Navigate, Outlet } from "react-router-dom";
 import LoginPage from "../pages/login/loginpage";
 import Home from "../pages/home/home";
+import Dashboard from "../pages/dashboard/dashboard";
 
 
 
@@ -37,7 +38,7 @@ const AppRoutes: React.FC = () => {
         element={<Navigate to={isAuthenticated ? "/" : "/login"} replace />}
       /> */} 
       <Route path="/login" element={<LoginPage/>} />
-      <Route path="/" element={<Home />} /> 
+      <Route path="/" element={<Dashboard />} /> 
     </Routes>
   );
 };

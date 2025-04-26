@@ -1,95 +1,123 @@
-import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
-import { Response } from 'express';
-
-@Catch(HttpException)
-export class HttpExceptionFilter implements ExceptionFilter {
-    catch(exception: HttpException, host: ArgumentsHost) {
-        const ctx = host.switchToHttp();
-        const response = ctx.getResponse<Response>();
-        const request = ctx.getRequest();
-        const logger = new Logger();
-        const { body } = request;
-        const loggingObject = {
-            requestData: body,
-            responseData: {}
-        };
-
-        let statusCode: number = null;
-        let errorType: string;
-        let statusInfo: any;
-        let internalMessage: string;
-
-        if (exception instanceof HttpException) {
-            const status = exception.getStatus();
-            // 4XX series
-            if (status >= 400 && status < 500) {
-                statusCode = status;
-                errorType = 'Client Side Errors';
-                internalMessage = exception.message['error'];
-                if (status === HttpStatus.BAD_REQUEST) {
-                    if (Array.isArray(exception['response'].message)) {
-                        const errorMessage = exception['response'].message[0];
-                        statusInfo = errorMessage;
-                    } else {
-                        console.log(exception)
-                        statusInfo = 'Server cannot or will not process the request due to client error(Request Payload)';
-                    }
-                } else if (status === HttpStatus.UNAUTHORIZED) {
-                    //401
-                    statusCode = status;
-                    errorType = 'Unauthorized';
-                    statusInfo = 'Lack of valid authentication credentials';
-                } else if (status === HttpStatus.FORBIDDEN) {
-                    //403
-                    statusCode = status;
-                    errorType = 'Forbidden';
-                    statusInfo = 'You are Forbidden to do this action';
-                } else if (status === HttpStatus.NOT_FOUND) {
-                    //404
-                    statusCode = status;
-                    errorType = 'Not Found';
-                    statusInfo = 'Server can\'t find the requested resource';
-                } else if (status === HttpStatus.NOT_ACCEPTABLE) {
-                    //406
-                    statusCode = status;
-                    errorType = 'Not Acceptable';
-                    statusInfo = 'Response headers not matching with Request headers';
-                } else if (status === HttpStatus.EXPECTATION_FAILED) {
-                    //417
-                    statusCode = status;
-                    errorType = 'Expectation Failed';
-                    statusInfo = 'Request Header could not fulfilled';
-                } else if (status === HttpStatus.TOO_MANY_REQUESTS) {
-                    //429
-                    statusCode = status;
-                    errorType = 'Too Many Requests';
-                    statusInfo = 'Too many requests in limited time';
-                }
+import {
+    ArgumentsHost,
+    Catch,
+    ExceptionFilter,
+    HttpException,
+    HttpStatus,
+    Logger,
+  } from '@nestjs/common';
+  import { Response, Request } from 'express';
+  
+  interface ExceptionResponse {
+    message?: string | string[];
+    error?: string;
+    statusCode?: number;
+    [key: string]: any;
+  }
+  
+  @Catch(HttpException)
+  export class HttpExceptionFilter implements ExceptionFilter {
+    private readonly logger = new Logger(HttpExceptionFilter.name);
+  
+    catch(exception: HttpException, host: ArgumentsHost): void {
+      const ctx = host.switchToHttp();
+      const response = ctx.getResponse<Response>();
+      const request = ctx.getRequest<Request>();
+  
+      const { body } = request;
+  
+      const loggingObject = {
+        requestData: body,
+        responseData: {},
+      };
+  
+      let statusCode: number | null = null;
+      let errorType = 'Unknown';
+      let statusInfo: string = '';
+      let internalMessage: string = '';
+  
+      const status = exception.getStatus();
+      const exceptionResponse = exception.getResponse() as ExceptionResponse;
+  
+      // Set internal message and fallback if not present
+      internalMessage = exceptionResponse?.error || exception.message || 'Unknown error';
+  
+      if (status >= 400 && status < 500) {
+        statusCode = status;
+  
+        switch (status) {
+          case HttpStatus.BAD_REQUEST:
+            errorType = 'Client Side Errors';
+            if (Array.isArray(exceptionResponse.message)) {
+              statusInfo = exceptionResponse.message[0];
             } else {
-                statusCode = 500;
-                errorType = 'Internal Server Error';
+              statusInfo = 'Server cannot or will not process the request due to client error (Request Payload)';
             }
-
-            const responseObject = {
-                status: false,
-                statusCode: statusCode,
-                errorType: errorType,
-                internalMessage: statusInfo,
-                statusInfo: internalMessage
-            }
-            loggingObject.responseData = responseObject;
-            logger.error(loggingObject);
-            response.status(statusCode).json(responseObject);
+            break;
+  
+          case HttpStatus.UNAUTHORIZED:
+            errorType = 'Unauthorized';
+            statusInfo = 'Lack of valid authentication credentials';
+            break;
+  
+          case HttpStatus.FORBIDDEN:
+            errorType = 'Forbidden';
+            statusInfo = 'You are forbidden to perform this action';
+            break;
+  
+          case HttpStatus.NOT_FOUND:
+            errorType = 'Not Found';
+            statusInfo = 'Server cannot find the requested resource';
+            break;
+  
+          case HttpStatus.NOT_ACCEPTABLE:
+            errorType = 'Not Acceptable';
+            statusInfo = 'Response headers not matching with request headers';
+            break;
+  
+          case HttpStatus.EXPECTATION_FAILED:
+            errorType = 'Expectation Failed';
+            statusInfo = 'Request header could not be fulfilled';
+            break;
+  
+          case HttpStatus.TOO_MANY_REQUESTS:
+            errorType = 'Too Many Requests';
+            statusInfo = 'Too many requests in a limited time';
+            break;
+  
+          default:
+            errorType = 'Client Side Errors';
+            statusInfo = internalMessage;
         }
+      } else {
+        statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
+        errorType = 'Internal Server Error';
+        statusInfo = 'An unexpected error occurred on the server';
+      }
+  
+      const responseObject = {
+        status: false,
+        statusCode: statusCode,
+        errorType: errorType,
+        internalMessage: internalMessage,
+        statusInfo: statusInfo,
+      };
+  
+      loggingObject.responseData = responseObject;
+      this.logger.error(loggingObject);
+  
+      response.status(statusCode).json(responseObject);
     }
-
-    getChildMessage = (messages: any) => {
-        if (messages.children) {
-            if (messages.children.length == 0) {
-                return Object.values(messages.constraints)[0];
-            } else {
-                return this.getChildMessage(messages.children[0]);
-            }
+  
+    getChildMessage = (messages: any): string => {
+      if (messages.children) {
+        if (messages.children.length === 0) {
+          return Object.values(messages.constraints)[0] as string;
+        } else {
+          return this.getChildMessage(messages.children[0]);
         }
-    }
-}
+      }
+      return 'Validation error';
+    };
+  }
+  

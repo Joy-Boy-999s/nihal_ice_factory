@@ -12,5 +12,13 @@
     "target": "es2021"
   },
   "include": ["src/**/*.ts"],
-  "exclude": []
+  "exclude": [],
+  "references": [
+    {
+      "path": "../../libs/backend-utils/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/shared-models/tsconfig.lib.json"
+    }
+  ]
 }
