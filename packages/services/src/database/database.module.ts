@@ -1,29 +1,69 @@
+// src/database/database.module.ts
+
+import { Module, Logger } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import * as dotenv from 'dotenv';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 
-dotenv.config();
+@Module({
+  imports: [
+    // Make sure ConfigModule is global (you already did this in AppModule)
+    ConfigModule,
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject:  [ConfigService],
+      useFactory: (cfg: ConfigService) => {
+        // Pull each value, throw if missing
+        const host = cfg.get<string>('DB_HOST');
+        if (!host) {
+          Logger.error('Missing DB_HOST env var');
+          throw new Error('DB_HOST is required');
+        }
 
-const DB_HOST = process.env.DB_HOST;
-const DB_PORT = process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 19941;
-const DB_USER = process.env.DB_USER;
-const DB_PASSWORD = process.env.DB_PASSWORD;
-const DB_NAME = process.env.DB_NAME;
+        const portStr = cfg.get<string>('DB_PORT');
+        if (!portStr) {
+          Logger.error('Missing DB_PORT env var');
+          throw new Error('DB_PORT is required');
+        }
+        const port = parseInt(portStr, 10);
 
-export const DatabaseModule = TypeOrmModule.forRoot({
-  type: 'mysql',
-  host: DB_HOST,
-  port: DB_PORT,
-  username: DB_USER,
-  password: DB_PASSWORD,
-  database: DB_NAME,
-  migrations: ['dist/database/migrations/*.{ts,js}'],
-  synchronize: true,
-  autoLoadEntities: true,
-  extra: {
-    connectionLimit: 10, 
-    keepAlive: true,
-  },
-  ssl: {
-    rejectUnauthorized: false, 
-  },
-});
+        const username = cfg.get<string>('DB_USER');
+        if (!username) {
+          Logger.error('Missing DB_USER env var');
+          throw new Error('DB_USER is required');
+        }
+
+        const password = cfg.get<string>('DB_PASSWORD');
+        if (password == null) {
+          Logger.error('Missing DB_PASSWORD env var');
+          throw new Error('DB_PASSWORD is required');
+        }
+
+        const database = cfg.get<string>('DB_NAME');
+        if (!database) {
+          Logger.error('Missing DB_NAME env var');
+          throw new Error('DB_NAME is required');
+        }
+
+        return {
+          type: 'mysql' as const,
+          host,
+          port,
+          username,
+          password,
+          database,
+          migrations: ['dist/database/migrations/*.{ts,js}'],
+          synchronize: true,
+          autoLoadEntities: true,
+          extra: {
+            connectionLimit: 10,
+            keepAlive: true,
+          },
+          ssl: {
+            rejectUnauthorized: false,
+          },
+        };
+      },
+    }),
+  ],
+})
+export class DatabaseModule {}
