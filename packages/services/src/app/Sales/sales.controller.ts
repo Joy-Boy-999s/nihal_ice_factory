@@ -1,9 +1,9 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, ParseIntPipe, Put } from '@nestjs/common';
 import { SalesService } from './sales.service';
-import { ApiBody, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CommonResponse } from '@nihal-ice-factory/shared-models';
 import { CreateSaleDto } from './dto/create-sale.dto';
-import { UpdateSaleDto } from './dto/update-sale.dto';
+import { SaleUpdateDto} from './dto/update-sale.dto';
 import { SaleIdRequestDto } from './dto/sale-id-request.dto';
 
 @ApiTags('Sales')
@@ -22,14 +22,15 @@ export class SalesController {
     }
   }
 
-  @Post('getAllSales')
-  @ApiBody({}) // No body required, but included for consistency
+  @Get('getAllSales')
+  @ApiOperation({ summary: 'Get all sales' })
+  @ApiResponse({ status: 200, description: 'Sales fetched successfully', type: CommonResponse })
   async getAllSales(): Promise<CommonResponse> {
     try {
-      const sales = await this.salesService.findAll();
-      return new CommonResponse(true, 0, 'Sales Fetched Successfully', sales);
+      const sales = await this.salesService.getAllSales();
+      return new CommonResponse(true, 200, 'Sales fetched successfully', sales);
     } catch (error) {
-      return new CommonResponse(false, 1, 'Error fetching sales', error);
+      return new CommonResponse(false, 500, 'Failed to fetch sales', error);
     }
   }
 
@@ -44,28 +45,23 @@ export class SalesController {
     }
   }
 
-  @Post('updateSale')
-  @ApiBody({ type: UpdateSaleDto })
-  async updateSale(@Body() reqDto: UpdateSaleDto): Promise<CommonResponse> {
+
+  @Put('updateSale/:saleId')
+  @ApiOperation({ summary: 'Update Sale Details' })
+  @ApiBody({ type: SaleUpdateDto })
+  async updateSale(
+    @Param('saleId') saleId: number,
+    @Body() reqDto: SaleUpdateDto,
+  ): Promise<CommonResponse> {
     try {
-      const sale = await this.salesService.update(+reqDto.saleId, reqDto);
+      const sale = await this.salesService.update(saleId, reqDto);
       return new CommonResponse(true, 0, 'Sale Updated Successfully', sale);
     } catch (error) {
       return new CommonResponse(false, 1, 'Error updating sale', error);
     }
   }
 
-  @Post('deleteSale')
-  @ApiBody({ type: SaleIdRequestDto })
-  async deleteSale(@Body() reqDto: SaleIdRequestDto): Promise<CommonResponse> {
-    try {
-      const sale = await this.salesService.remove(+reqDto.saleId);
-      return new CommonResponse(true, 0, 'Sale Deleted Successfully', sale);
-    } catch (error) {
-      return new CommonResponse(false, 1, 'Error deleting sale', error);
-    }
-  }
-
+  
   @Post('getPrintData')
   @ApiBody({ type: SaleIdRequestDto })
   async getPrintData(@Body() reqDto: SaleIdRequestDto): Promise<CommonResponse> {

@@ -32,8 +32,8 @@ export class Sale {
   @Column()
   pieces: number;
 
-  @Column()
-  totalCans: number;
+  @Column('decimal', { precision: 10, scale: 2 })
+  totalCans: number;  
 
   @Column({ nullable: true })
   discount?: number;
