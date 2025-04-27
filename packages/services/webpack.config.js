@@ -3,7 +3,8 @@ const path = require('path');
 
 module.exports = {
   output: {
-    path: path.resolve(__dirname, '../../..', 'dist/packages/services'), 
+    // Emit build artifacts into the existing dist folder under packages/services
+    path: path.resolve(__dirname, 'dist'),
     filename: 'main.js',
   },
   plugins: [
@@ -18,4 +19,5 @@ module.exports = {
       generatePackageJson: true,
     }),
   ],
+  resolve: { extensions: ['.js', '.ts'] },
 };

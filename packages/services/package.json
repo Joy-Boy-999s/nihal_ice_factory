@@ -12,6 +12,7 @@
             "node-env=production"
           ]
         },
+        "start": "node dist/main.js",
         "configurations": {
           "development": {
             "args": [
@@ -40,5 +41,8 @@
         }
       }
     }
+  },
+  "devDependencies": {
+    "fast-uri": "^3.0.6"
   }
 }
