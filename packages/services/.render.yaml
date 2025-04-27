@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: nihal-ice-factory
+    env: node
+    repo: https://github.com/Joy-Boy-999s/nihal_ice_factory
+    branch: main
+    buildCommand: npm install --force && npx nx build services
+    startCommand: node packages/services/dist/main.js
+    envVars:
+      - key: DB_HOST
+        value: ice-999-chaitu.j.aivencloud.com
+      - key: DB_PORT
+        value: 19941
+      - key: DB_USER
+        value: avnadmin
+      - key: DB_PASSWORD
+        value: AVNS_Lvpd4ucHPhAMP3h8m8_
+      - key: DB_NAME
+        value: nihal_ice
+      - key: EMAIL_USER
+        value: mkillmessage18@gmail.com
+      - key: EMAIL_PASS
+        value: hhjj ghaw zuer oiwk
+      - key: JWT_SECRET
+        value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9-a2f8c3e9d7b1f4a5e8c2d9b6f3a7
+      - key: ENCRYPTION_KEY
+        value: 4e8c6d1f3b5e0a9d2c7f4e8b1a3c5d9f6e2a7b0c4d8e1f3a5b9d6c2e7f2a9b3c
