@@ -1,5 +1,5 @@
+const path = require('path'); 
 const { NxAppWebpackPlugin } = require('@nx/webpack/app-plugin');
-const { join } = require('path');
 
 module.exports = {
   output: {
