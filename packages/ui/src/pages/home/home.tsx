@@ -222,8 +222,10 @@ const Home: FC = () => {
     [form]
   );
 
+  // Single sale deletion
   const handleDelete = useCallback(
     (id: number) => {
+      console.log('handleDelete called with ID:', id); // Debug log
       Modal.confirm({
         title: 'Are you sure you want to delete this sale?',
         onOk: async () => {
@@ -239,9 +241,9 @@ const Home: FC = () => {
                 'Content-Type': 'application/json',
               },
             };
-            console.log('Deleting sale with ID:', id); // Debug log
+
             const response: CommonResponse = await salesService.deleteSale(id, config);
-            console.log('Delete response:', response); // Debug log
+
             if (response.status && response.errorCode === 200) {
               setSales(prev => prev.filter(sale => sale.id !== id));
               Modal.success({
@@ -253,10 +255,11 @@ const Home: FC = () => {
             }
           } catch (error: any) {
             console.error('Error deleting sale:', error);
-            Modal.error({
-              title: 'Error',
-              content: error.response?.data?.internalMessage || error.message || 'An error occurred while deleting the sale',
-            });
+            const errorMessage =
+              error.response?.data?.internalMessage ||
+              error.message ||
+              'An error occurred while deleting the sale';
+
             if (error.response?.status === 401) {
               Cookies.remove('accessToken');
               Cookies.remove('userRole');
@@ -265,17 +268,34 @@ const Home: FC = () => {
                 content: 'Your session has expired. Please log in again.',
                 onOk: () => navigate('/login', { replace: true }),
               });
+            } else {
+              Modal.error({
+                title: 'Error',
+                content: errorMessage,
+              });
             }
           } finally {
             setLoading(false);
           }
+        },
+        onCancel: () => {
+          console.log('Delete cancelled');
         },
       });
     },
     [navigate, salesService]
   );
 
+  // Bulk sale deletion
   const handleBulkDelete = useCallback(() => {
+    console.log('handleBulkDelete called with selectedRowKeys:', selectedRowKeys); // Debug log
+    if (selectedRowKeys.length === 0) {
+      Modal.warning({
+        title: 'No sales selected',
+        content: 'Please select at least one sale to delete.',
+      });
+      return;
+    }
     Modal.confirm({
       title: `Are you sure you want to delete ${selectedRowKeys.length} selected sales?`,
       onOk: async () => {
@@ -291,21 +311,27 @@ const Home: FC = () => {
               'Content-Type': 'application/json',
             },
           };
-          const deletePromises = selectedRowKeys.map(id => salesService.deleteSale(Number(id), config));
-          const responses = await Promise.all(deletePromises);
-          const failed = responses.some(res => !res.status || res.errorCode !== 200);
-          if (!failed) {
+
+          const ids = selectedRowKeys.map(id => Number(id));
+          const response: CommonResponse = await salesService.deleteMultiple(ids, config);
+
+          if (response.status && response.errorCode === 200) {
             setSales(prev => prev.filter(sale => !selectedRowKeys.includes(sale.id)));
             setSelectedRowKeys([]);
             Modal.success({
               title: 'Success',
-              content: 'Selected sales deleted successfully',
+              content: response.internalMessage || 'Selected sales deleted successfully',
             });
           } else {
-            throw new Error('Some sales could not be deleted');
+            throw new Error(response.internalMessage || 'Failed to delete selected sales');
           }
         } catch (error: any) {
           console.error('Error bulk deleting sales:', error);
+          const errorMessage =
+            error.response?.data?.internalMessage ||
+            error.message ||
+            'An error occurred while deleting sales';
+
           if (error.response?.status === 401) {
             Cookies.remove('accessToken');
             Cookies.remove('userRole');
@@ -317,12 +343,15 @@ const Home: FC = () => {
           } else {
             Modal.error({
               title: 'Error',
-              content: error.message || 'An error occurred while deleting sales',
+              content: errorMessage,
             });
           }
         } finally {
           setLoading(false);
         }
+      },
+      onCancel: () => {
+        console.log('Bulk delete cancelled');
       },
     });
   }, [selectedRowKeys, navigate, salesService]);
@@ -332,7 +361,7 @@ const Home: FC = () => {
       try {
         const values = await form.validateFields();
         setLoading(true);
-  
+
         // Build auth config once
         const accessToken = Cookies.get('accessToken');
         if (!accessToken) throw new Error('No access token found');
@@ -342,7 +371,7 @@ const Home: FC = () => {
             'Content-Type': 'application/json',
           },
         };
-  
+
         // Shared base payload (including computed fields)
         const baseData = {
           date: values.date.format('YYYY-MM-DD'),
@@ -359,27 +388,27 @@ const Home: FC = () => {
           totalCans: calculateTotalCans(values.cans, values.blocks, values.pieces),
           soldBy: values.soldBy,
         };
-  
+
         let response: CommonResponse;
-  
+
         if (currentSale) {
           // —————— UPDATE FLOW ——————
-  
+
           // Remove computed fields before sending
           const { totalAmount, totalCans, ...updatePayload } = baseData;
           console.debug('Updating sale (sans computed fields):', currentSale.id, updatePayload);
-  
+
           response = await salesService.updateSale(
             currentSale.id,
             updatePayload as SaleUpdateDto,
             config,
           );
           console.debug('Update response:', response);
-  
+
           // Unwrap nested data
           const level1 = response.data?.data;
           const inner = level1?.data ?? level1;
-  
+
           if (!response.status || response.errorCode !== 200) {
             throw new Error(
               level1?.internalMessage ||
@@ -387,12 +416,12 @@ const Home: FC = () => {
               'Failed to update sale'
             );
           }
-  
+
           const updatedSale = {
             ...inner,
             totalCans: Number(inner.totalCans),
           };
-  
+
           // Update list and UI
           setSales(prev =>
             prev.map(s => (s.id === currentSale.id ? updatedSale : s))
@@ -401,7 +430,7 @@ const Home: FC = () => {
             title: 'Sale Updated',
             content: level1?.internalMessage || 'Sale updated successfully',
           });
-  
+
           // Reset modal & form
           form.resetFields();
           setCurrentSale(null);
@@ -410,10 +439,10 @@ const Home: FC = () => {
           // —————— CREATE FLOW (unchanged) ——————
           const createDto: CreateSaleDto = baseData;
           console.debug('Creating sale:', createDto);
-  
+
           response = await salesService.createSale(createDto, config);
           console.debug('Create response:', response);
-  
+
           if (response.status && response.errorCode === 201) {
             const raw = response.data?.data ?? response.data;
             const newSale = { ...raw, totalCans: Number(raw.totalCans) };
@@ -449,7 +478,6 @@ const Home: FC = () => {
     },
     [form, currentSale, navigate, calculateTotal, calculateTotalCans, salesService]
   );
-  
 
   const generatePrintContent = useCallback((records: Sale[]) => {
     return `
@@ -706,7 +734,7 @@ const Home: FC = () => {
         key: 'actions',
         width: '10%',
         align: 'center' as const,
-        render: (_: any, record: Sale, index: number) => (
+        render: (_37: any, record: Sale, index: number) => (
           <Space>
             <Button
               type="link"
