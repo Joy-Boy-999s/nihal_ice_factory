@@ -1,7 +1,7 @@
-import { Controller, Post, Body, Get, Param, ParseIntPipe, Put } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, ParseIntPipe, Put, Delete, HttpCode, HttpStatus } from '@nestjs/common';
 import { SalesService } from './sales.service';
 import { ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CommonResponse } from '@nihal-ice-factory/shared-models';
+import { CommonResponse, DeleteSalesDto } from '@nihal-ice-factory/shared-models';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { SaleUpdateDto} from './dto/update-sale.dto';
 import { SaleIdRequestDto } from './dto/sale-id-request.dto';
@@ -58,6 +58,36 @@ export class SalesController {
       return new CommonResponse(true, 0, 'Sale Updated Successfully', sale);
     } catch (error) {
       return new CommonResponse(false, 1, 'Error updating sale', error);
+    }
+  }
+
+  @Delete('deleteSale/:saleId')
+  @ApiOperation({ summary: 'Delete a single sale' })
+  @ApiParam({ name: 'saleId', type: Number, description: 'ID of the sale to delete' })
+  @HttpCode(HttpStatus.OK)
+  async deleteSale(
+    @Param('saleId', ParseIntPipe) saleId: number,
+  ): Promise<CommonResponse> {
+    try {
+      await this.salesService.deleteOne(saleId);
+      return new CommonResponse(true, 0, 'Sale Deleted Successfully', null);
+    } catch (error) {
+      return new CommonResponse(false, 1, 'Error deleting sale', error);
+    }
+  }
+
+  @Delete('deleteSales')
+  @ApiOperation({ summary: 'Delete multiple sales' })
+  @ApiBody({ type: DeleteSalesDto })
+  @HttpCode(HttpStatus.OK)
+  async deleteMultiple(
+    @Body() reqDto: DeleteSalesDto,
+  ): Promise<CommonResponse> {
+    try {
+      await this.salesService.deleteMany(reqDto.ids);
+      return new CommonResponse(true, 0, 'Sales Deleted Successfully', null);
+    } catch (error) {
+      return new CommonResponse(false, 1, 'Error deleting sales', error);
     }
   }
 

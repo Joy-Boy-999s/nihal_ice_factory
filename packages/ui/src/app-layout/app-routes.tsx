@@ -4,6 +4,7 @@ import Cookies from "js-cookie";
 import LoginPage from "../pages/login/loginpage";
 import Home from "../pages/home/home";
 import Dashboard from "../pages/dashboard/dashboard";
+import Addsale from "../pages/addSales/addsale";
 // import Sales from "../pages/sales/sales"; // Assuming a Sales component exists
 
 const ProtectedRoute: React.FC = () => {
@@ -28,10 +29,10 @@ const AppRoutes: React.FC = () => {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route element={<ProtectedRoute />}>
-        <Route path="/" element={<Home />} />
-        {/* <Route path="/sales" element={<Sales />} /> */}
+        <Route path="/addsales" element={<Addsale />} />
       </Route>
       <Route element={<AdminRoute />}>
+        <Route path="/" element={<Home />} />
         <Route path="/dashboard" element={<Dashboard />} />
       </Route>
       <Route path="*" element={<Navigate to={isAuthenticated ? "/" : "/login"} replace />} />

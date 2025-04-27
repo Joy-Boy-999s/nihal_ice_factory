@@ -23,11 +23,15 @@ export class SalesHelpService extends CommonAxiosService {
     return await this.axiosPostCall(this.getURLwithMainEndPoint('findSaleById'), { id }, config);
   }
 
-  async deleteSale(id: number, config?: AxiosRequestConfig): Promise<CommonResponse> {
-    return await this.axiosPostCall(this.getURLwithMainEndPoint('deleteSale'), { id }, config);
-  }
-
   async getPrintData(id: number, config?: AxiosRequestConfig): Promise<CommonResponse> {
     return await this.axiosPostCall(this.getURLwithMainEndPoint('getPrintData'), { id }, config);
+  }
+
+  async deleteSale(id: number,config?: AxiosRequestConfig,): Promise<CommonResponse> {
+    return await this.axiosDeleteCall(this.getURLwithMainEndPoint(`deleteSale/${id}`), config,);
+  }
+
+  async deleteMultiple(ids: number[],config?: AxiosRequestConfig,): Promise<CommonResponse> {
+    return await this.axiosDeleteCall(this.getURLwithMainEndPoint('deleteSales'),{...config,data: { ids },},);
   }
 }

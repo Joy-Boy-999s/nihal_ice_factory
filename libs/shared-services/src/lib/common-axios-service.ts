@@ -43,5 +43,18 @@ export class CommonAxiosService {
       throw new Error(error?.message || 'Unknown error occurred during PUT call');
     }
   }
+
+  async axiosDeleteCall(urlEndPoint: string, config?: AxiosRequestConfig): Promise<any> {
+    try {
+      const response = await AxiosInstance.delete(this.URL + urlEndPoint, config);
+      if (response && response.status >= 200 && response.status < 300) {
+        return response.data;
+      } else {
+        throw new Error(`Unexpected response status: ${response.status}`);
+      }
+    } catch (error: any) {
+      throw new Error(error?.message || 'Unknown error occurred during DELETE call');
+    }
+  }
   
 }

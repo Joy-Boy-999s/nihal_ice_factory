@@ -110,6 +110,47 @@ export class SalesService {
     }
   }
 
+  async deleteOne(id: number): Promise<CommonResponse> {
+    await this.transactionManager.startTransaction();
+    try {
+      const saleRepo = this.transactionManager.getRepository(this.salesRepository);
+      const sale = await saleRepo.findOne({ where: { id } });
+      if (!sale) {
+        await this.transactionManager.rollbackTransaction();
+        return new CommonResponse(false, 404, 'Sale not found', null);
+      }
+      await saleRepo.remove(sale);
+      await this.transactionManager.commitTransaction();
+      return new CommonResponse(true, 200, 'Sale deleted successfully', null);
+    } catch (error) {
+      await this.transactionManager.rollbackTransaction();
+      const message = error instanceof Error ? error.message : 'Unknown error occurred';
+      return new CommonResponse(false, 500, message, null);
+    }
+  }
+
+  /**
+   * Delete multiple sales by IDs
+   */
+  async deleteMany(ids: number[]): Promise<CommonResponse> {
+    await this.transactionManager.startTransaction();
+    try {
+      const saleRepo = this.transactionManager.getRepository(this.salesRepository);
+      const sales = await saleRepo.find({ where: ids.map(id => ({ id })) });
+      if (sales.length !== ids.length) {
+        await this.transactionManager.rollbackTransaction();
+        return new CommonResponse(false, 404, 'One or more sales not found', null);
+      }
+      await saleRepo.remove(sales);
+      await this.transactionManager.commitTransaction();
+      return new CommonResponse(true, 200, 'Sales deleted successfully', null);
+    } catch (error) {
+      await this.transactionManager.rollbackTransaction();
+      const message = error instanceof Error ? error.message : 'Unknown error occurred';
+      return new CommonResponse(false, 500, message, null);
+    }
+  }
+
   async findOne(id: number): Promise<CommonResponse> {
     try {
       const sale = await this.salesRepository.findOne({ where: { id } });
