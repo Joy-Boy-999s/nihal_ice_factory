@@ -1,65 +1,49 @@
-import { IsString, IsNumber, IsDateString, IsIn, Min, IsOptional } from 'class-validator';
+// src/sales/dto/sale-update.dto.ts
 
-export class UpdateSaleDto {
+import { IsOptional, IsString, IsNumber } from 'class-validator';
+
+export class SaleUpdateDto {
   @IsString()
-  saleId: string;
-
   @IsOptional()
-  @IsDateString()
   date?: string;
 
-  @IsOptional()
   @IsString()
+  @IsOptional()
   time?: string;
 
-  @IsOptional()
   @IsString()
-  @IsIn(['Unit 1', 'Unit 2', 'Unit 3'])
+  @IsOptional()
   unit?: string;
 
-  @IsOptional()
   @IsString()
+  @IsOptional()
   name?: string;
 
-  @IsOptional()
   @IsString()
+  @IsOptional()
   mobile?: string;
 
-  @IsOptional()
   @IsString()
+  @IsOptional()
   shop?: string;
 
-  @IsOptional()
   @IsNumber()
-  @Min(0)
+  @IsOptional()
   cans?: number;
 
-  @IsOptional()
   @IsNumber()
-  @Min(0)
+  @IsOptional()
   blocks?: number;
 
-  @IsOptional()
   @IsNumber()
-  @Min(0)
+  @IsOptional()
   pieces?: number;
 
-  @IsOptional()
   @IsNumber()
-  @Min(0)
-  totalCans?: number;
-
   @IsOptional()
-  @IsNumber()
-  @Min(0)
   discount?: number;
 
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  totalAmount?: number;
-
-  @IsOptional()
   @IsString()
+  @IsOptional()
   soldBy?: string;
 }

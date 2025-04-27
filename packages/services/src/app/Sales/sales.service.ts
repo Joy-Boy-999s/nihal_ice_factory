@@ -1,7 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { CommonResponse } from '@nihal-ice-factory/shared-models';
+import { CommonResponse, SaleUpdateDto } from '@nihal-ice-factory/shared-models';
 import { CreateSaleDto } from './dto/create-sale.dto';
-import { UpdateSaleDto } from './dto/update-sale.dto';
 import { GenericTransactionManager } from '../../database/trasanction-manager';
 import { SalesRepository } from './repository/sales.repository';
 
@@ -12,11 +11,12 @@ export class SalesService {
     private readonly transactionManager: GenericTransactionManager,
   ) {}
 
-  private calculateTotalAmount(cans: number, blocks: number, pieces: number): number {
+  private calculateTotalAmount(cans: number, blocks: number, pieces: number, discount = 0): number {
     const pricePerCan = 240;
     const pricePerBlock = 80;
     const pricePerPiece = 20;
-    return cans * pricePerCan + blocks * pricePerBlock + pieces * pricePerPiece;
+    const total = cans * pricePerCan + blocks * pricePerBlock + pieces * pricePerPiece;
+    return total - discount;
   }
 
   private calculateTotalCans(cans: number, blocks: number, pieces: number): number {
@@ -55,11 +55,56 @@ export class SalesService {
     }
   }
 
-  async findAll(): Promise<CommonResponse> {
+  async update(saleId: number, updateSaleDto: SaleUpdateDto): Promise<CommonResponse> {
+    await this.transactionManager.startTransaction();
     try {
-      const sales = await this.salesRepository.find();
+      // Use salesRepository directly here
+      const sale = await this.salesRepository.findOne({ where: { id: saleId } });
+
+      if (!sale) {
+        throw new Error('Sale not found');
+      }
+
+      const totalAmount = this.calculateTotalAmount(
+        updateSaleDto.cans || sale.cans,
+        updateSaleDto.blocks || sale.blocks,
+        updateSaleDto.pieces || sale.pieces,
+      );
+      const totalCans = this.calculateTotalCans(
+        updateSaleDto.cans || sale.cans,
+        updateSaleDto.blocks || sale.blocks,
+        updateSaleDto.pieces || sale.pieces,
+      );
+
+      const updatedSale = this.salesRepository.create({
+        ...sale,
+        ...updateSaleDto,
+        totalAmount,
+        totalCans,
+      });
+
+      const savedSale = await this.salesRepository.save(updatedSale);
+      await this.transactionManager.commitTransaction();
+
+      return new CommonResponse(true, 200, 'Sale updated successfully', savedSale);
+    } catch (error) {
+      await this.transactionManager.rollbackTransaction();
+      const message = error instanceof Error ? error.message : 'Unknown error occurred';
+      return new CommonResponse(false, message.includes('required') ? 400 : 500, message, null);
+    }
+  }
+
+  async getAllSales(): Promise<CommonResponse> {
+    await this.transactionManager.startTransaction();
+    try {
+      const saleRepo = this.transactionManager.getRepository(this.salesRepository);
+
+      const sales = await saleRepo.find();
+
+      await this.transactionManager.commitTransaction();
       return new CommonResponse(true, 200, 'Sales fetched successfully', sales);
     } catch (error) {
+      await this.transactionManager.rollbackTransaction();
       const message = error instanceof Error ? error.message : 'Unknown error occurred';
       return new CommonResponse(false, 500, message, null);
     }
@@ -78,50 +123,19 @@ export class SalesService {
     }
   }
 
-  async update(id: number, updateSaleDto: UpdateSaleDto): Promise<CommonResponse> {
-    await this.transactionManager.startTransaction();
-    try {
-      const saleRepo = this.transactionManager.getRepository(this.salesRepository);
-      const sale = await saleRepo.findOne({ where: { id } });
-      if (!sale) {
-        await this.transactionManager.rollbackTransaction();
-        return new CommonResponse(false, 404, 'Sale not found', null);
-      }
-
-      let totalAmount = sale.totalAmount;
-      let totalCans = sale.totalCans;
-      if (updateSaleDto.cans !== undefined || updateSaleDto.blocks !== undefined || updateSaleDto.pieces !== undefined) {
-        const cans = updateSaleDto.cans ?? sale.cans;
-        const blocks = updateSaleDto.blocks ?? sale.blocks;
-        const pieces = updateSaleDto.pieces ?? sale.pieces;
-        totalAmount = this.calculateTotalAmount(cans, blocks, pieces);
-        totalCans = this.calculateTotalCans(cans, blocks, pieces);
-      }
-
-      await saleRepo.update(id, {
-        ...updateSaleDto,
-        totalAmount,
-        totalCans,
-      });
-      const updatedSale = await saleRepo.findOne({ where: { id } });
-      await this.transactionManager.commitTransaction();
-      return new CommonResponse(true, 200, 'Sale updated successfully', updatedSale);
-    } catch (error) {
-      await this.transactionManager.rollbackTransaction();
-      const message = error instanceof Error ? error.message : 'Unknown error occurred';
-      return new CommonResponse(false, 500, message, null);
-    }
-  }
+  
 
   async remove(id: number): Promise<CommonResponse> {
     await this.transactionManager.startTransaction();
     try {
       const saleRepo = this.transactionManager.getRepository(this.salesRepository);
+
       const sale = await saleRepo.findOne({ where: { id } });
       if (!sale) {
         await this.transactionManager.rollbackTransaction();
         return new CommonResponse(false, 404, 'Sale not found', null);
       }
+
       await saleRepo.remove(sale);
       await this.transactionManager.commitTransaction();
       return new CommonResponse(true, 200, 'Sale deleted successfully', null);
@@ -138,7 +152,9 @@ export class SalesService {
       if (!sale) {
         throw new NotFoundException(`Sale with ID ${id} not found`);
       }
+
       const totalCans = this.calculateTotalCans(sale.cans, sale.blocks, sale.pieces);
+
       const printData = {
         ...sale,
         totalCans: totalCans.toFixed(2),
@@ -146,6 +162,7 @@ export class SalesService {
         blockCost: sale.blocks * 80,
         pieceCost: sale.pieces * 20,
       };
+
       return new CommonResponse(true, 200, 'Print data fetched successfully', printData);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error occurred';
