@@ -22,12 +22,16 @@ async function bootstrap() {
   createDocument(app);
 
   // Ensure the port is not undefined
-  const port = configService.get('port') || 3000; // Default to 3000 if undefined
-  const server = await app.listen(port);
-  server.setTimeout(1000 * configService.get('responseTimeOut'));
+  // Pick up Render’s PORT env var first, then your custom one, then fallback
+  const port = parseInt(process.env.PORT ?? '3000', 10);
+  await app.listen(port, '0.0.0.0');
+  
 
-  Logger.log('APP ENV :', configService.get('env'));
-  Logger.log(`🚀 EMS service - http://localhost:${port}`);
+  // Bind to 0.0.0.0 so Render’s router can reach you
+  await app.listen(port, '0.0.0.0');
+
+  Logger.log(`🚀 EMS service running on http://0.0.0.0:${port}`);
+
 }
 
 bootstrap();
