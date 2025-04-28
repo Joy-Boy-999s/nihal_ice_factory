@@ -25,10 +25,6 @@ async function bootstrap() {
   // Pick up Render’s PORT env var first, then your custom one, then fallback
   const port = parseInt(process.env.PORT ?? '3000', 10);
   await app.listen(port, '0.0.0.0');
-  
-
-  // Bind to 0.0.0.0 so Render’s router can reach you
-  await app.listen(port, '0.0.0.0');
 
   Logger.log(`🚀 EMS service running on http://0.0.0.0:${port}`);
 
