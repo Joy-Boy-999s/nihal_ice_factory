@@ -1,6 +1,24 @@
 {
-  "files": [],
-  "include": [],
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noUnusedLocals": false,
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "baseUrl": ".",
+    "paths": {
+      "@nihal-ice-factory/shared-services": [
+        "../../libs/shared-services/src/index.ts"
+      ],
+      "@nihal-ice-factory/shared-models": [
+        "../../libs/shared-models/src/index.ts"
+    ]
+    },
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"],
   "references": [
     {
       "path": "../../libs/shared-models"
@@ -11,6 +29,5 @@
     {
       "path": "./tsconfig.app.json"
     }
-  ],
-  "extends": "../../tsconfig.base.json"
+  ]
 }

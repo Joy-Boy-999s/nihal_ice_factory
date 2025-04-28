@@ -1,8 +1,7 @@
-/// <reference types='vitest' />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-
-export default defineConfig(() => ({
+import path from 'path';
+export default defineConfig({
   root: __dirname,
   cacheDir: '../../node_modules/.vite/packages/ui',
   server: {
@@ -14,16 +13,27 @@ export default defineConfig(() => ({
     host: 'localhost',
   },
   plugins: [react()],
-  // Uncomment this if you are using workers.
-  // worker: {
-  //  plugins: [ nxViteTsPaths() ],
-  // },
+  resolve: {
+    alias: {
+      '@nihal-ice-factory/shared-services': path.resolve(
+        __dirname,
+        '../../libs/shared-services/src/index.ts'
+      ),
+      '@nihal-ice-factory/shared-models': path.resolve(
+        __dirname,
+        '../../libs/shared-models/src/index.ts'
+      ),
+    },
+  },
   build: {
-    outDir: './dist',
+    outDir: '../../dist/packages/ui',
     emptyOutDir: true,
     reportCompressedSize: true,
     commonjsOptions: {
       transformMixedEsModules: true,
     },
+    rollupOptions: {
+      external: [],
+    },
   },
-}));
+});
