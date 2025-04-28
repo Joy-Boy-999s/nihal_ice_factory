@@ -1,5 +1,46 @@
 {
   "name": "@nihal-ice-factory/ui",
   "version": "0.0.1",
-  "private": true
+  "private": true,
+  "nx": {
+    "targets": {
+      "build": {
+        "executor": "@nx/vite:build",
+        "outputs": [
+          "{options.outputPath}"
+        ],
+        "defaultConfiguration": "production",
+        "options": {
+          "outputPath": "dist/packages/ui",
+          "configFile": "packages/ui/vite.config.ts"
+        },
+        "configurations": {
+          "development": {
+            "mode": "development"
+          },
+          "production": {
+            "mode": "production",
+            "sourcemap": false,
+            "minify": true
+          }
+        }
+      },
+      "serve": {
+        "executor": "@nx/vite:dev",
+        "options": {
+          "configFile": "packages/ui/vite.config.ts"
+        }
+      }
+    }
+  },
+  "devDependencies": {
+    "@nx/vite": "^20.8.1",
+    "@vitejs/plugin-react": "latest",
+    "fast-uri": "^3.0.6",
+    "vite": "latest"
+  },
+  "dependencies": {
+    "react": "latest",
+    "react-dom": "latest"
+  }
 }
