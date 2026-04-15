@@ -1,11 +1,22 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Route, Routes, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { AppShell } from '../layout/AppShell';
-import LoginPage from '../pages/login/loginpage';
-import Home from '../pages/home/home';
-import Dashboard from '../pages/dashboard/dashboard';
-import AddSale from '../pages/addSales/addsale';
+import { PageLoader } from '../components';
+
+const LoginPage = lazy(() => import('../pages/login/loginpage'));
+const Home = lazy(() => import('../pages/home/home'));
+const Dashboard = lazy(() => import('../pages/dashboard/dashboard'));
+const AddSale = lazy(() => import('../pages/addSales/addsale'));
+
+const LazyPage: React.FC<{ children: React.ReactNode; label: string }> = ({
+  children,
+  label,
+}) => (
+  <Suspense fallback={<PageLoader label={label} />}>
+    {children}
+  </Suspense>
+);
 
 const ProtectedRoute: React.FC = () => {
   const { authenticated } = useAuth();
@@ -24,13 +35,41 @@ const AppRoutes: React.FC = () => {
 
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/login"
+        element={
+          <LazyPage label="Loading login...">
+            <LoginPage />
+          </LazyPage>
+        }
+      />
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>
-          <Route path="/" element={<Home />} />
-          <Route path="/addsales" element={<AddSale />} />
+          <Route
+            path="/"
+            element={
+              <LazyPage label="Loading sales...">
+                <Home />
+              </LazyPage>
+            }
+          />
+          <Route
+            path="/addsales"
+            element={
+              <LazyPage label="Loading add sale form...">
+                <AddSale />
+              </LazyPage>
+            }
+          />
           <Route element={<AdminRoute />}>
-            <Route path="/dashboard" element={<Dashboard />} />
+            <Route
+              path="/dashboard"
+              element={
+                <LazyPage label="Loading dashboard...">
+                  <Dashboard />
+                </LazyPage>
+              }
+            />
           </Route>
         </Route>
       </Route>
