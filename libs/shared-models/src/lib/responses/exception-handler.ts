@@ -1,14 +1,20 @@
-import { HttpException } from '@nestjs/common';
 import { CommonResponse } from './common-response';
 
 export class ExceptionHandler {
   static handleError(error: any, message: string): CommonResponse {
-    // If the error is an instance of HttpException, use its status and message
-    if (error instanceof HttpException) {
+    // Support NestJS-like errors without importing backend-only packages in UI bundles.
+    if (error && typeof error.getStatus === 'function') {
       return new CommonResponse(
         false, 
         error.getStatus(), 
-        error.message
+        error.message ?? message
+      );
+    }
+    if (error && typeof error.status === 'number') {
+      return new CommonResponse(
+        false,
+        error.status,
+        error.message ?? message
       );
     }
     // For other errors, return a 500 Internal Server Error response

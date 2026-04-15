@@ -1,399 +1,243 @@
-import React, { useState, useEffect, useCallback, useMemo, FC } from 'react';
-import { motion } from 'framer-motion';
-import { Form, Input, InputNumber, DatePicker, Button, Select, Menu, Dropdown, Modal } from 'antd';
-import { LogoutOutlined } from '@ant-design/icons';
-import moment from 'moment';
-import Cookies from 'js-cookie';
+import React, { Suspense, lazy, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Navbar from '../navbar/navbar';
 import { SalesHelpService } from '@nihal-ice-factory/shared-services';
+import { Button, Card, Field, Input, PageHeader, Select, useToast } from '../../components';
+import { buildAuthConfig, logout } from '../../lib/auth';
+import { calculateTotal, calculateTotalCans, formatCurrency, } from '../../lib/pricing';
+import { createInitialForm, UNIT_OPTIONS } from './utils/constants';
+import { isValidNumericInput, parseSaleNumbers, validateSaleForm } from './utils/form-helpers';
+import { SaleForm } from './model/types';
+import './styles/addsale.css';
 
-interface CreateSaleDto {
-  date: string;
-  time: string;
-  unit: string;
-  name: string;
-  mobile: string;
-  shop: string;
-  cans: number;
-  blocks: number;
-  pieces: number;
-  totalCans: number;
-  discount?: number;
-  totalAmount: number;
-  soldBy: string;
-}
+const SaleFormSection = lazy(() => import('./components/SaleFormSection'));
+const SaleTotalsPreview = lazy(() => import('./components/SaleTotalsPreview'));
+const SalePreviewModal = lazy(() => import('./components/SalePreviewModal'));
 
-const AddSale: FC = () => {
-  const [form] = Form.useForm();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [role, setRole] = useState<string>('USER');
-  const [loading, setLoading] = useState<boolean>(false);
-  const navigate = useNavigate();
-  const salesService = useMemo(() => new SalesHelpService(), []);
+const AddSale: React.FC = () => {
+	const navigate = useNavigate();
+	const toast = useToast();
+	const salesService = useMemo(() => new SalesHelpService(), []);
 
-  useEffect(() => {
-    const accessToken = Cookies.get('accessToken');
-    if (!accessToken) {
-      navigate('/login', { replace: true });
-      return;
-    }
-    const jsrole = Cookies.get('userRole')?.toUpperCase();
-    setRole(jsrole || 'USER');
-    form.setFieldsValue({
-      time: moment(),
-      date: moment(),
-      discount: 0,
-    });
-  }, [navigate, form]);
+	const [form, setForm] = useState<SaleForm>(createInitialForm());
+	const [errors, setErrors] = useState<Partial<Record<keyof SaleForm, string>>>({});
+	const [saving, setSaving] = useState(false);
+	const [previewOpen, setPreviewOpen] = useState(false);
 
-  const toggleSidebar = useCallback(() => {
-    setIsSidebarOpen(prev => !prev);
-  }, []);
+	const setField = <K extends keyof SaleForm>(key: K, value: SaleForm[K]) => {
+		setForm((prev) => ({ ...prev, [key]: value }));
+		setErrors((prev) => ({ ...prev, [key]: undefined }));
+	};
 
-  const calculateTotal = useCallback((cans: number, blocks: number, pieces: number, discount: number = 0) => {
-    const pricePerCan = 240;
-    const pricePerBlock = 80;
-    const pricePerPiece = 20;
-    const subtotal = cans * pricePerCan + blocks * pricePerBlock + pieces * pricePerPiece;
-    return subtotal - discount;
-  }, []);
+	const numericField = (key: keyof SaleForm) => (e: React.ChangeEvent<HTMLInputElement>) => {
+		const v = e.target.value;
+		if (isValidNumericInput(v)) setField(key, v as SaleForm[keyof SaleForm]);
+	};
 
-  const calculateTotalCans = useCallback((cans: number, blocks: number, pieces: number) => {
-    return cans + blocks / 3 + pieces / 12;
-  }, []);
+	const { cans: cansN, blocks: blocksN, pieces: piecesN, discount: discountN } =
+		parseSaleNumbers(form);
+	const totalCans = calculateTotalCans(cansN, blocksN, piecesN);
+	const totalAmount = calculateTotal(cansN, blocksN, piecesN, discountN);
 
-  const handleSubmit = useCallback(async () => {
-    try {
-      const values = await form.validateFields();
-      setLoading(true);
-  
-      const accessToken = Cookies.get('accessToken');
-      if (!accessToken) throw new Error('No access token found');
-  
-      const config = {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      };
-  
-      const saleData: CreateSaleDto = {
-        date: values.date.format('YYYY-MM-DD'),
-        time: values.time.format('HH:mm'),
-        unit: values.unit,
-        name: values.name,
-        mobile: values.mobile,
-        shop: values.shop,
-        cans: Number(values.cans),
-        blocks: Number(values.blocks),
-        pieces: Number(values.pieces),
-        discount: Number(values.discount),
-        totalAmount: calculateTotal(values.cans, values.blocks, values.pieces, values.discount),
-        totalCans: calculateTotalCans(values.cans, values.blocks, values.pieces),
-        soldBy: values.soldBy,
-      };
-  
-      const response = await salesService.createSale(saleData, config);
-  
-      if (response.status) {
-        Modal.success({
-          title: 'Sale Created',
-          content: response.internalMessage || 'Sale created successfully',
-          // only reset once the user closes the modal
-          onOk: () => form.resetFields(),
-        });
-      } else {
-        throw new Error(response.internalMessage || `Unexpected response code: ${response.status}`);
-      }
-  
-    } catch (error: any) {
-      console.error('Error creating sale:', error);
-      if (error.response?.status === 401) {
-        Cookies.remove('accessToken');
-        Cookies.remove('userRole');
-        Modal.error({
-          title: 'Session Expired',
-          content: 'Your session has expired. Please log in again.',
-          onOk: () => navigate('/login', { replace: true }),
-        });
-      } else {
-        Modal.error({
-          title: 'Error',
-          content: error.message || 'An error occurred while creating the sale',
-        });
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [form, calculateTotal, calculateTotalCans, navigate, salesService]);
-  
+	const validate = (): boolean => {
+		const errs = validateSaleForm(form, {
+			cans: cansN,
+			blocks: blocksN,
+			pieces: piecesN,
+			discount: discountN,
+		});
+		setErrors(errs);
+		return Object.keys(errs).length === 0;
+	};
 
-  const handleLogout = useCallback(() => {
-    Cookies.remove('accessToken');
-    Cookies.remove('userRole');
-    navigate('/login');
-  }, [navigate]);
+	const handleReview = (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!validate()) return;
+		setPreviewOpen(true);
+	};
 
-  const menu = useMemo(() => (
-    <Menu>
-      <Menu.Item key="logout" onClick={handleLogout} icon={<LogoutOutlined />}>
-        Logout
-      </Menu.Item>
-    </Menu>
-  ), [handleLogout]);
+	const handleBackToEdit = () => {
+		if (saving) return;
+		setPreviewOpen(false);
+	};
 
-  const containerVariants = {
-    hidden: { opacity: 0, scale: 0.95 },
-    visible: { opacity: 1, scale: 1, transition: { staggerChildren: 0.2, ease: 'easeOut', duration: 0.6 } },
-  };
+	const handleConfirmSave = async () => {
+		setSaving(true);
+		try {
+			const payload = {
+				date: form.date,
+				time: form.time,
+				unit: form.unit,
+				name: form.name.trim(),
+				mobile: form.mobile.trim(),
+				shop: form.shop.trim(),
+				cans: cansN,
+				blocks: blocksN,
+				pieces: piecesN,
+				discount: discountN,
+				totalAmount,
+				totalCans,
+				soldBy: form.soldBy.trim(),
+			};
+			const res = await salesService.createSale(payload, buildAuthConfig());
+			if (!res?.status) {
+				throw new Error(res?.internalMessage || 'Create failed');
+			}
+			toast.success('Sale created');
+			setPreviewOpen(false);
+			setForm(createInitialForm());
+			setErrors({});
+		} catch (err: any) {
+			if (err.response?.status === 401) {
+				logout();
+				toast.error('Session expired. Please sign in again.');
+				navigate('/login', { replace: true });
+			} else {
+				toast.error(err.response?.data?.internalMessage || err.message || 'Create failed');
+			}
+		} finally {
+			setSaving(false);
+		}
+	};
 
-  return (
-    <div className="dashboard-container">
-      <Navbar isOpen={isSidebarOpen} toggleSidebar={toggleSidebar} />
-      <div className={`main-content ${isSidebarOpen ? 'sidebar-open' : ''}`}>
-        <motion.header
-          className="header"
-          initial={{ y: -50, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.7, ease: 'easeOut' }}
-        >
-          <div className="header-left">
-            <h3>Add New Sale - KP Ice Factory</h3>
-          </div>
-          <Dropdown overlay={menu} placement="bottomCenter" trigger={['hover']}>
-            <div className="user-info" style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-              <span className="user-icon">👤</span>
-              <span>{role}</span>
-            </div>
-          </Dropdown>
-        </motion.header>
-        <motion.div className="content" variants={containerVariants} initial="hidden" animate="visible">
-          <div className="card table-card">
-            <h3>Add Sale</h3>
-            <Form form={form} layout="vertical" className="sales-form" onFinish={handleSubmit}>
-              <div className="space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <Form.Item
-                    name="date"
-                    label="Date"
-                    rules={[{ required: true, message: 'Date is required' }]}
-                    className="form-item"
-                  >
-                    <DatePicker
-                      format="YYYY-MM-DD"
-                      className="w-full"
-                      disabled
-                      style={{
-                        borderRadius: '8px',
-                        border: '1px solid #d1d5db',
-                        background: '#f0f2f5',
-                        color: '#4b5563',
-                      }}
-                    />
-                  </Form.Item>
-                  <Form.Item
-                    name="time"
-                    label="Time"
-                    rules={[{ required: true, message: 'Time is required' }]}
-                    className="form-item"
-                  >
-                    <DatePicker.TimePicker
-                      format="HH:mm"
-                      className="w-full"
-                      disabled
-                      style={{
-                        borderRadius: '8px',
-                        border: '1px solid #d1d5db',
-                        background: '#f0f2f5',
-                        color: '#4b5563',
-                      }}
-                    />
-                  </Form.Item>
-                </div>
-                <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4" style={{ color: '#1f2937' }}>
-                    Customer Information
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <Form.Item
-                      name="name"
-                      label="Name"
-                      rules={[{ required: true, message: 'Please enter a name' }]}
-                      className="form-item"
-                    >
-                      <Input
-                        className="w-full"
-                        style={{
-                          borderRadius: '8px',
-                          border: '1px solid #d1d5db',
-                          padding: '10px',
-                          transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
-                        }}
-                      />
-                    </Form.Item>
-                    <Form.Item
-                      name="mobile"
-                      label="Mobile"
-                      rules={[
-                        { required: true, message: 'Please enter a mobile number' },
-                        {
-                          pattern: /^[6-9]\d{9}$/,
-                          message: 'Please enter a valid 10-digit Indian mobile number',
-                        },
-                      ]}
-                      className="form-item"
-                    >
-                      <Input
-                        className="w-full"
-                        style={{
-                          borderRadius: '8px',
-                          border: '1px solid #d1d5db',
-                          padding: '10px',
-                        }}
-                      />
-                    </Form.Item>
-                    <Form.Item
-                      name="shop"
-                      label="Shop"
-                      rules={[{ required: true, message: 'Please enter a shop name' }]}
-                      className="form-item"
-                    >
-                      <Input
-                        className="w-full"
-                        style={{
-                          borderRadius: '8px',
-                          border: '1px solid #d1d5db',
-                          padding: '10px',
-                        }}
-                      />
-                    </Form.Item>
-                  </div>
-                </div>
-                <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4" style={{ color: '#1f2937' }}>
-                    Sale Details
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Form.Item
-                      name="unit"
-                      label="Unit"
-                      rules={[{ required: true, message: 'Please select a unit' }]}
-                      className="form-item"
-                    >
-                      <Select allowClear className="w-full" style={{ borderRadius: '8px' }}>
-                        <Select.Option value="Unit 1">Unit 1</Select.Option>
-                        <Select.Option value="Unit 2">Unit 2</Select.Option>
-                        <Select.Option value="Unit 3">Unit 3</Select.Option>
-                      </Select>
-                    </Form.Item>
-                    <Form.Item
-                      name="cans"
-                      label="Cans"
-                      rules={[{ required: true, message: 'Please enter number of cans' }]}
-                      className="form-item"
-                    >
-                      <InputNumber min={0} className="w-full" style={{ borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                    </Form.Item>
-                    <Form.Item
-                      name="blocks"
-                      label="Blocks"
-                      rules={[{ required: true, message: 'Please enter number of blocks' }]}
-                      className="form-item"
-                    >
-                      <InputNumber min={0} className="w-full" style={{ borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                    </Form.Item>
-                    <Form.Item
-                      name="pieces"
-                      label="Pieces"
-                      rules={[{ required: true, message: 'Please enter number of pieces' }]}
-                      className="form-item"
-                    >
-                      <InputNumber min={0} className="w-full" style={{ borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                    </Form.Item>
-                    <Form.Item
-                      name="discount"
-                      label="Discount"
-                      rules={[{ required: true, message: 'Please enter discount amount' }]}
-                      className="form-item"
-                    >
-                      <InputNumber min={0} className="w-full" style={{ borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                    </Form.Item>
-                    <Form.Item label="Total Cans" shouldUpdate className="form-item">
-                      {() => (
-                        <span className="text-base font-medium" style={{ color: '#10b981' }}>
-                          {calculateTotalCans(
-                            form.getFieldValue('cans') || 0,
-                            form.getFieldValue('blocks') || 0,
-                            form.getFieldValue('pieces') || 0
-                          ).toFixed(2)}
-                        </span>
-                      )}
-                    </Form.Item>
-                    <Form.Item label="Total Amount" shouldUpdate className="form-item">
-                      {() => (
-                        <span className="text-base font-medium" style={{ color: '#2563eb' }}>
-                          {calculateTotal(
-                            form.getFieldValue('cans') || 0,
-                            form.getFieldValue('blocks') || 0,
-                            form.getFieldValue('pieces') || 0,
-                            form.getFieldValue('discount') || 0
-                          )} Rs
-                        </span>
-                      )}
-                    </Form.Item>
-                  </div>
-                </div>
-                <Form.Item
-                  name="soldBy"
-                  label="Sold By"
-                  rules={[{ required: true, message: 'Please enter sold by' }]}
-                  className="form-item"
-                >
-                  <Input
-                    className="w-full"
-                    style={{ borderRadius: '8px', border: '1px solid #d1d5db', padding: '10px' }}
-                  />
-                </Form.Item>
-                <Form.Item>
-                  <Button
-                    className="modal-cancel-btn"
-                    onClick={() => navigate('/sales')}
-                    style={{
-                      borderRadius: '8px',
-                      padding: '8px 20px',
-                      fontWeight: 500,
-                      borderColor: '#d1d5db',
-                      color: '#4b5563',
-                      background: '#ffffff',
-                      marginRight: '10px',
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="primary"
-                    htmlType="submit"
-                    loading={loading}
-                    style={{
-                      borderRadius: '8px',
-                      padding: '8px 20px',
-                      fontWeight: 500,
-                      background: '#2563eb',
-                      borderColor: '#2563eb',
-                      color: '#ffffff',
-                    }}
-                  >
-                    Add
-                  </Button>
-                </Form.Item>
-              </div>
-            </Form>
-          </div>
-        </motion.div>
-      </div>
-    </div>
-  );
+	return (
+		<div className="add-sale-page">
+			<PageHeader
+				title="Add Sale"
+				subtitle="Create a new invoice-ready sale record for your ERP workflow"
+				actions={
+					<Button variant="secondary" onClick={() => navigate('/')}>
+						Back to Sales
+					</Button>
+				}
+			/>
+
+			<Card title="New Sale Entry">
+				<div className="add-sale-shell">
+					<p className="add-sale-shell__hint">
+						Tip: enter quantities first and the live totals will update automatically.
+					</p>
+
+					<form className="add-sale-form" onSubmit={handleReview} noValidate>
+						<div className="add-sale-grid add-sale-grid--2">
+							<Field label="Date" required>
+								<Input
+									type="date"
+									value={form.date}
+									onChange={(e) => setField('date', e.target.value)}
+								/>
+							</Field>
+							<Field label="Time" required>
+								<Input
+									type="time"
+									value={form.time}
+									onChange={(e) => setField('time', e.target.value)}
+								/>
+							</Field>
+						</div>
+
+						<Suspense fallback={<div className="add-sale-lazy-placeholder" aria-hidden />}>
+							<SaleFormSection
+								title="Customer Information"
+								description="Capture basic contact and shop details"
+							>
+								<div className="add-sale-grid add-sale-grid--3">
+									<Field label="Name" required error={errors.name}>
+										<Input
+											value={form.name}
+											onChange={(e) => setField('name', e.target.value)}
+											invalid={!!errors.name}
+										/>
+									</Field>
+									<Field label="Mobile" required error={errors.mobile}>
+										<Input
+											value={form.mobile}
+											onChange={(e) => setField('mobile', e.target.value)}
+											invalid={!!errors.mobile}
+											inputMode="numeric"
+											maxLength={10}
+										/>
+									</Field>
+									<Field label="Shop" required error={errors.shop}>
+										<Input
+											value={form.shop}
+											onChange={(e) => setField('shop', e.target.value)}
+											invalid={!!errors.shop}
+										/>
+									</Field>
+								</div>
+							</SaleFormSection>
+						</Suspense>
+
+						<Suspense fallback={<div className="add-sale-lazy-placeholder" aria-hidden />}>
+							<SaleFormSection
+								title="Sale Details"
+								description="Enter unit, product quantities, discount, and seller"
+							>
+								<div className="add-sale-grid add-sale-grid--3">
+									<Field label="Unit" required error={errors.unit}>
+										<Select
+											value={form.unit}
+											onChange={(e) => setField('unit', e.target.value)}
+											options={UNIT_OPTIONS}
+											placeholder="Select unit"
+											invalid={!!errors.unit}
+										/>
+									</Field>
+									<Field label="Cans" error={errors.cans}>
+										<Input value={form.cans} onChange={numericField('cans')} inputMode="numeric" />
+									</Field>
+									<Field label="Blocks">
+										<Input value={form.blocks} onChange={numericField('blocks')} inputMode="numeric" />
+									</Field>
+									<Field label="Pieces">
+										<Input value={form.pieces} onChange={numericField('pieces')} inputMode="numeric" />
+									</Field>
+									<Field label="Discount">
+										<Input value={form.discount} onChange={numericField('discount')} inputMode="numeric" />
+									</Field>
+									<Field label="Sold By" required error={errors.soldBy}>
+										<Input
+											value={form.soldBy}
+											onChange={(e) => setField('soldBy', e.target.value)}
+											invalid={!!errors.soldBy}
+										/>
+									</Field>
+								</div>
+							</SaleFormSection>
+						</Suspense>
+
+						<Suspense fallback={<div className="add-sale-lazy-placeholder" aria-hidden />}>
+							<SaleTotalsPreview
+								totalCansText={totalCans.toFixed(2)}
+								totalAmountText={formatCurrency(totalAmount)}
+							/>
+						</Suspense>
+
+						<div className="add-sale-actions">
+							<Button variant="secondary" type="button" onClick={() => navigate('/')}>
+								Cancel
+							</Button>
+							<Button type="submit">
+								Review &amp; Save
+							</Button>
+						</div>
+					</form>
+				</div>
+			</Card>
+
+			<Suspense fallback={null}>
+				<SalePreviewModal
+					open={previewOpen}
+					form={form}
+					totalCans={totalCans}
+					totalAmount={totalAmount}
+					saving={saving}
+					onEdit={handleBackToEdit}
+					onConfirm={handleConfirmSave}
+				/>
+			</Suspense>
+		</div>
+	);
 };
 
-export default React.memo(AddSale);
+export default AddSale;
