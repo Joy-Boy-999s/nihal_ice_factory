@@ -22,5 +22,7 @@ export type { ModalProps } from './Modal/Modal';
 export { DataTable } from './DataTable/DataTable';
 export type { DataTableProps, Column } from './DataTable/DataTable';
 
+export { PageLoader } from './PageLoader/PageLoader';
+
 export { ToastProvider, useToast } from './Toast/Toast';
 export type { ToastVariant } from './Toast/Toast';
