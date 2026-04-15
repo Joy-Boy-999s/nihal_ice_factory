@@ -15,7 +15,7 @@ import {
   Select,
   useToast,
 } from '../../components';
-import { buildAuthConfig, logout } from '../../lib/auth';
+import { buildAuthConfig, logout, useAuth } from '../../lib/auth';
 import { todayISO, nowHHMM } from '../../lib/date';
 import {
   calculateTotal,
@@ -80,6 +80,8 @@ const MOBILE_RE = /^[6-9]\d{9}$/;
 const Home: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
+  const { role } = useAuth();
+  const isAdmin = role === 'ADMIN';
   const salesService = useMemo(() => new SalesHelpService(), []);
 
   const [sales, setSales] = useState<Sale[]>([]);
@@ -242,8 +244,8 @@ const Home: React.FC = () => {
           updatePayload as SaleUpdateDto,
           buildAuthConfig()
         );
-        if (!res.status || res.errorCode !== 200) {
-          throw new Error(res.internalMessage || 'Update failed');
+        if (!res?.status) {
+          throw new Error(res?.internalMessage || 'Update failed');
         }
         const inner = res.data?.data?.data ?? res.data?.data ?? res.data;
         setSales((prev) =>
@@ -254,8 +256,8 @@ const Home: React.FC = () => {
         toast.success('Sale updated');
       } else {
         const res = await salesService.createSale(payload, buildAuthConfig());
-        if (!res.status || (res.errorCode !== 201 && res.errorCode !== 200)) {
-          throw new Error(res.internalMessage || 'Create failed');
+        if (!res?.status) {
+          throw new Error(res?.internalMessage || 'Create failed');
         }
         const raw = res.data?.data ?? res.data;
         const newSale = { ...raw, totalCans: Number(raw.totalCans) };
@@ -263,6 +265,7 @@ const Home: React.FC = () => {
         toast.success('Sale created');
       }
 
+      setForm({ ...emptyForm, date: todayISO(), time: nowHHMM() });
       closeModal();
     } catch (err: any) {
       if (!handleAuthError(err)) {
@@ -297,66 +300,456 @@ const Home: React.FC = () => {
     }
   };
 
-  const generatePrintContent = (records: any[]) => `
-    <html>
-      <head>
-        <title>Sales Receipts</title>
-        <style>
-          body { font-family: Arial, sans-serif; padding: 20px; color: #0f172a; }
-          .bill { max-width: 600px; margin: 20px auto; border: 1px solid #e5e7eb; padding: 24px; border-radius: 10px; page-break-after: always; }
-          .bill:last-child { page-break-after: auto; }
-          h2 { text-align: center; margin-top: 0; }
-          p { margin: 4px 0; font-size: 14px; }
-          .items li { margin: 4px 0; }
-          .total { font-weight: bold; font-size: 16px; }
-          @media print { .bill { margin: 0 auto; border: none; } }
-        </style>
-      </head>
-      <body>
-        ${records
-          .map(
-            (r) => `
-          <div class="bill">
-            <h2>KP Ice Factory — Sales Receipt</h2>
-            <p><strong>Serial No:</strong> ${r.id}</p>
-            <p><strong>Date:</strong> ${r.date} &nbsp; <strong>Time:</strong> ${r.time}</p>
-            <p><strong>Unit:</strong> ${r.unit}</p>
-            <p><strong>Customer:</strong> ${r.name} (${r.mobile})</p>
-            <p><strong>Shop:</strong> ${r.shop}</p>
-            <hr />
-            <div class="items">
-              <ul>
-                <li>Cans: ${r.cans} × 240 Rs = ${r.cans * 240} Rs</li>
-                <li>Blocks: ${r.blocks} × 80 Rs = ${r.blocks * 80} Rs</li>
-                <li>Pieces: ${r.pieces} × 20 Rs = ${r.pieces * 20} Rs</li>
-                <li>Discount: ${r.discount} Rs</li>
-              </ul>
+  const escapeHtml = (value: unknown): string =>
+    String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+  const formatInr = (value: number): string =>
+    new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 0,
+    }).format(Number.isFinite(value) ? value : 0);
+
+  const buildInvoice = (r: any): string => {
+    const cans = Number(r.cans) || 0;
+    const blocks = Number(r.blocks) || 0;
+    const pieces = Number(r.pieces) || 0;
+    const discount = Number(r.discount) || 0;
+    const canRate = 240;
+    const blockRate = 80;
+    const pieceRate = 20;
+    const canAmount = cans * canRate;
+    const blockAmount = blocks * blockRate;
+    const pieceAmount = pieces * pieceRate;
+    const subtotal = canAmount + blockAmount + pieceAmount;
+    const grandTotal = Number(r.totalAmount) || subtotal - discount;
+
+    const rows: Array<{ label: string; qty: number; rate: number; amount: number }> = [
+      { label: 'Ice Cans', qty: cans, rate: canRate, amount: canAmount },
+      { label: 'Ice Blocks', qty: blocks, rate: blockRate, amount: blockAmount },
+      { label: 'Ice Pieces', qty: pieces, rate: pieceRate, amount: pieceAmount },
+    ].filter((row) => row.qty > 0);
+
+    const itemsHtml = rows
+      .map(
+        (row, idx) => `
+          <tr>
+            <td class="idx">${idx + 1}</td>
+            <td>${escapeHtml(row.label)}</td>
+            <td class="num">${row.qty}</td>
+            <td class="num">${formatInr(row.rate)}</td>
+            <td class="num">${formatInr(row.amount)}</td>
+          </tr>`,
+      )
+      .join('');
+
+    const invoiceNo = `NIF-${String(r.id ?? '').padStart(6, '0')}`;
+    const generatedAt = new Date().toLocaleString('en-IN', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+
+    return `
+      <section class="invoice">
+        <header class="invoice__head">
+          <div class="invoice__brand">
+            <div class="invoice__logo">NIF</div>
+            <div>
+              <h1>Nihal Ice Factory</h1>
+              <p class="muted">Ice Manufacturing &amp; Distribution</p>
+              <p class="muted small">${escapeHtml(r.unit || 'Head Office')}</p>
             </div>
-            <p class="total">Total Cans: ${Number(r.totalCans).toFixed(2)}</p>
-            <p class="total">Total Amount: ${r.totalAmount} Rs</p>
-            <p><strong>Sold By:</strong> ${r.soldBy}</p>
-          </div>`
-          )
-          .join('')}
-      </body>
-    </html>`;
+          </div>
+          <div class="invoice__meta">
+            <div class="invoice__badge">INVOICE</div>
+            <table>
+              <tr><th>Invoice No.</th><td>${escapeHtml(invoiceNo)}</td></tr>
+              <tr><th>Date</th><td>${escapeHtml(r.date || '')}</td></tr>
+              <tr><th>Time</th><td>${escapeHtml(r.time || '')}</td></tr>
+              <tr><th>Unit</th><td>${escapeHtml(r.unit || '')}</td></tr>
+            </table>
+          </div>
+        </header>
+
+        <div class="invoice__parties">
+          <div class="invoice__party">
+            <div class="invoice__party-title">Bill To</div>
+            <div class="invoice__party-name">${escapeHtml(r.name || '—')}</div>
+            <div class="muted">${escapeHtml(r.shop || '')}</div>
+            <div class="muted">Mobile: ${escapeHtml(r.mobile || '—')}</div>
+          </div>
+          <div class="invoice__party invoice__party--right">
+            <div class="invoice__party-title">Issued By</div>
+            <div class="invoice__party-name">${escapeHtml(r.soldBy || '—')}</div>
+            <div class="muted">Nihal Ice Factory</div>
+          </div>
+        </div>
+
+        <table class="invoice__items">
+          <thead>
+            <tr>
+              <th class="idx">#</th>
+              <th>Description</th>
+              <th class="num">Qty</th>
+              <th class="num">Rate</th>
+              <th class="num">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsHtml || '<tr><td colspan="5" class="muted center">No items</td></tr>'}
+          </tbody>
+        </table>
+
+        <div class="invoice__summary">
+          <div class="invoice__notes">
+            <div class="invoice__notes-title">Notes</div>
+            <p>Total Cans (weighted): <strong>${Number(r.totalCans || 0).toFixed(2)}</strong></p>
+            <p class="muted small">Goods once sold will not be taken back. Thank you for your business.</p>
+          </div>
+          <table class="invoice__totals">
+            <tr>
+              <th>Subtotal</th>
+              <td>${formatInr(subtotal)}</td>
+            </tr>
+            <tr>
+              <th>Discount</th>
+              <td>− ${formatInr(discount)}</td>
+            </tr>
+            <tr class="invoice__totals-grand">
+              <th>Grand Total</th>
+              <td>${formatInr(grandTotal)}</td>
+            </tr>
+          </table>
+        </div>
+
+        <footer class="invoice__foot">
+          <div class="invoice__sign">
+            <span class="invoice__sign-line"></span>
+            <span class="muted small">Authorised Signatory</span>
+          </div>
+          <div class="invoice__generated muted small">
+            Generated ${escapeHtml(generatedAt)}
+          </div>
+        </footer>
+      </section>`;
+  };
+
+  const generatePrintContent = (records: any[]) => `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Nihal Ice Factory — Invoice</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #f4f6fb;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        color: #0f172a;
+        -webkit-font-smoothing: antialiased;
+      }
+      .page { padding: 28px; }
+      .invoice {
+        position: relative;
+        max-width: 780px;
+        margin: 0 auto 28px;
+        padding: 40px 44px 32px;
+        background: #ffffff;
+        border-radius: 16px;
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 6px 24px rgba(15, 23, 42, 0.06);
+        page-break-after: always;
+      }
+      .invoice:last-child { page-break-after: auto; }
+      .invoice::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 6px;
+        border-radius: 16px 16px 0 0;
+        background: linear-gradient(90deg, #1d4ed8, #3b82f6, #60a5fa);
+      }
+
+      /* Header */
+      .invoice__head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 24px;
+        padding-bottom: 22px;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      .invoice__brand {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .invoice__logo {
+        width: 56px;
+        height: 56px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #1d4ed8, #60a5fa);
+        color: #fff;
+        font-weight: 700;
+        font-size: 18px;
+        letter-spacing: 0.05em;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 6px 14px rgba(29, 78, 216, 0.25);
+      }
+      .invoice__brand h1 {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+      .invoice__meta { text-align: right; min-width: 240px; }
+      .invoice__badge {
+        display: inline-block;
+        padding: 4px 12px;
+        background: #eff6ff;
+        color: #1d4ed8;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        border-radius: 999px;
+        border: 1px solid #bfdbfe;
+        margin-bottom: 10px;
+      }
+      .invoice__meta table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      .invoice__meta th {
+        text-align: right;
+        color: #64748b;
+        font-weight: 500;
+        padding: 3px 10px 3px 0;
+        white-space: nowrap;
+      }
+      .invoice__meta td {
+        text-align: right;
+        color: #0f172a;
+        font-weight: 600;
+        padding: 3px 0;
+      }
+
+      /* Parties */
+      .invoice__parties {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin: 24px 0 20px;
+      }
+      .invoice__party {
+        padding: 14px 16px;
+        background: #f8fafc;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+      }
+      .invoice__party--right { text-align: right; }
+      .invoice__party-title {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #64748b;
+        margin-bottom: 6px;
+      }
+      .invoice__party-name {
+        font-size: 15px;
+        font-weight: 600;
+        color: #0f172a;
+        margin-bottom: 2px;
+      }
+
+      /* Items table */
+      .invoice__items {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 4px;
+        font-size: 13px;
+      }
+      .invoice__items thead th {
+        background: #0f172a;
+        color: #e2e8f0;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding: 10px 12px;
+        text-align: left;
+      }
+      .invoice__items thead th:first-child { border-radius: 8px 0 0 8px; }
+      .invoice__items thead th:last-child { border-radius: 0 8px 8px 0; }
+      .invoice__items tbody td {
+        padding: 12px;
+        border-bottom: 1px solid #eef2f7;
+        color: #0f172a;
+      }
+      .invoice__items tbody tr:last-child td { border-bottom: none; }
+      .invoice__items .idx { width: 36px; color: #94a3b8; }
+      .invoice__items .num { text-align: right; white-space: nowrap; }
+      .invoice__items .center { text-align: center; }
+
+      /* Summary */
+      .invoice__summary {
+        display: grid;
+        grid-template-columns: 1fr 280px;
+        gap: 24px;
+        margin-top: 24px;
+        align-items: start;
+      }
+      .invoice__notes {
+        font-size: 12px;
+        color: #334155;
+      }
+      .invoice__notes-title {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #64748b;
+        margin-bottom: 6px;
+      }
+      .invoice__notes p { margin: 4px 0; }
+
+      .invoice__totals {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      .invoice__totals th,
+      .invoice__totals td {
+        padding: 8px 12px;
+      }
+      .invoice__totals th {
+        text-align: left;
+        color: #64748b;
+        font-weight: 500;
+      }
+      .invoice__totals td {
+        text-align: right;
+        color: #0f172a;
+        font-weight: 600;
+      }
+      .invoice__totals-grand {
+        background: linear-gradient(135deg, #1d4ed8, #3b82f6);
+        border-radius: 10px;
+      }
+      .invoice__totals-grand th,
+      .invoice__totals-grand td {
+        color: #ffffff;
+        font-size: 15px;
+        font-weight: 700;
+      }
+      .invoice__totals-grand th:first-child { border-radius: 10px 0 0 10px; }
+      .invoice__totals-grand td:last-child { border-radius: 0 10px 10px 0; }
+
+      /* Footer */
+      .invoice__foot {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        margin-top: 36px;
+        padding-top: 20px;
+        border-top: 1px dashed #e5e7eb;
+      }
+      .invoice__sign { min-width: 220px; }
+      .invoice__sign-line {
+        display: block;
+        width: 180px;
+        height: 1px;
+        background: #0f172a;
+        margin-bottom: 6px;
+      }
+
+      .muted { color: #64748b; margin: 2px 0; font-size: 12px; }
+      .small { font-size: 11px; }
+      .center { text-align: center; }
+
+      @media print {
+        html, body { background: #ffffff; }
+        .page { padding: 0; }
+        .invoice {
+          margin: 0;
+          border: none;
+          box-shadow: none;
+          border-radius: 0;
+          max-width: none;
+          padding: 24px 32px;
+        }
+        .invoice::before { border-radius: 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      ${records.map((r) => buildInvoice(r)).join('')}
+    </div>
+  </body>
+</html>`;
+
+  const openPrintPreview = (html: string): void => {
+    const existing = document.getElementById('app-print-frame');
+    if (existing) existing.remove();
+
+    const frame = document.createElement('iframe');
+    frame.id = 'app-print-frame';
+    frame.setAttribute('aria-hidden', 'true');
+    frame.style.position = 'fixed';
+    frame.style.right = '0';
+    frame.style.bottom = '0';
+    frame.style.width = '0';
+    frame.style.height = '0';
+    frame.style.border = '0';
+    document.body.appendChild(frame);
+
+    frame.onload = () => {
+      const win = frame.contentWindow;
+      if (!win) return;
+      try {
+        win.focus();
+        win.print();
+      } catch {
+        toast.error('Print was blocked by the browser');
+      }
+    };
+
+    frame.srcdoc = html;
+  };
+
+  const unwrapPrintPayload = (res: CommonResponse): Record<string, unknown> | null => {
+    const first = res?.data;
+    if (first && typeof first === 'object') {
+      const nested = (first as { data?: unknown }).data;
+      if (nested && typeof nested === 'object') return nested as Record<string, unknown>;
+      return first as Record<string, unknown>;
+    }
+    return null;
+  };
 
   const handlePrint = async (sale: Sale) => {
     try {
       const res = await salesService.getPrintData(sale.id, buildAuthConfig());
-      if (!res.status || res.errorCode !== 200) {
-        throw new Error(res.internalMessage || 'Failed to fetch print data');
+      if (!res?.status) {
+        throw new Error(res?.internalMessage || 'Failed to fetch print data');
       }
-      const data =
-        res.data && typeof res.data === 'object' && res.data.data
-          ? { ...res.data.data, totalCans: Number(res.data.data.totalCans) }
-          : res.data;
-      const win = window.open('', '_blank');
-      if (win) {
-        win.document.write(generatePrintContent([data]));
-        win.document.close();
-        win.print();
-      }
+      const payload = unwrapPrintPayload(res);
+      if (!payload) throw new Error('Print data was empty');
+      const record = { ...payload, totalCans: Number(payload.totalCans) };
+      openPrintPreview(generatePrintContent([record]));
     } catch (err: any) {
       if (!handleAuthError(err)) toast.error(err.message || 'Print failed');
     }
@@ -368,23 +761,18 @@ const Home: React.FC = () => {
       return;
     }
     try {
-      const promises = selectedKeys.map((k) =>
-        salesService.getPrintData(Number(k), buildAuthConfig())
+      const results = await Promise.all(
+        selectedKeys.map((k) => salesService.getPrintData(Number(k), buildAuthConfig()))
       );
-      const results = await Promise.all(promises);
       const records = results
-        .filter((r: any) => r.status && r.errorCode === 200)
-        .map((r: any) => {
-          const d = r.data?.data ?? r.data;
-          return { ...d, totalCans: Number(d.totalCans) };
-        });
+        .filter((r: CommonResponse) => r?.status)
+        .map((r: CommonResponse) => {
+          const payload = unwrapPrintPayload(r);
+          return payload ? { ...payload, totalCans: Number(payload.totalCans) } : null;
+        })
+        .filter((r): r is Record<string, unknown> => r !== null);
       if (records.length === 0) throw new Error('No print data available');
-      const win = window.open('', '_blank');
-      if (win) {
-        win.document.write(generatePrintContent(records));
-        win.document.close();
-        win.print();
-      }
+      openPrintPreview(generatePrintContent(records));
     } catch (err: any) {
       if (!handleAuthError(err)) toast.error(err.message || 'Print failed');
     }
@@ -447,25 +835,29 @@ const Home: React.FC = () => {
         width: 180,
         render: (row) => (
           <div className="home-page__row-actions">
-            <Button size="sm" variant="secondary" onClick={() => openEdit(row)}>
-              Edit
-            </Button>
+            {isAdmin && (
+              <Button size="sm" variant="secondary" onClick={() => openEdit(row)}>
+                Edit
+              </Button>
+            )}
             <Button size="sm" variant="ghost" onClick={() => handlePrint(row)}>
               Print
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setConfirmDelete({ open: true, ids: [row.id] })}
-            >
-              Delete
-            </Button>
+            {isAdmin && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setConfirmDelete({ open: true, ids: [row.id] })}
+              >
+                Delete
+              </Button>
+            )}
           </div>
         ),
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [isAdmin]
   );
 
   return (
@@ -500,18 +892,20 @@ const Home: React.FC = () => {
                 <Button size="sm" variant="secondary" onClick={handleBulkPrint}>
                   Print ({selectedKeys.length})
                 </Button>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  onClick={() =>
-                    setConfirmDelete({
-                      open: true,
-                      ids: selectedKeys.map((k) => Number(k)),
-                    })
-                  }
-                >
-                  Delete ({selectedKeys.length})
-                </Button>
+                {isAdmin && (
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    onClick={() =>
+                      setConfirmDelete({
+                        open: true,
+                        ids: selectedKeys.map((k) => Number(k)),
+                      })
+                    }
+                  >
+                    Delete ({selectedKeys.length})
+                  </Button>
+                )}
               </>
             )}
           </>

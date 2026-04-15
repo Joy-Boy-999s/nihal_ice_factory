@@ -11,6 +11,7 @@ import './styles/addsale.css';
 
 const SaleFormSection = lazy(() => import('./components/SaleFormSection'));
 const SaleTotalsPreview = lazy(() => import('./components/SaleTotalsPreview'));
+const SalePreviewModal = lazy(() => import('./components/SalePreviewModal'));
 
 const AddSale: React.FC = () => {
 	const navigate = useNavigate();
@@ -20,6 +21,7 @@ const AddSale: React.FC = () => {
 	const [form, setForm] = useState<SaleForm>(createInitialForm());
 	const [errors, setErrors] = useState<Partial<Record<keyof SaleForm, string>>>({});
 	const [saving, setSaving] = useState(false);
+	const [previewOpen, setPreviewOpen] = useState(false);
 
 	const setField = <K extends keyof SaleForm>(key: K, value: SaleForm[K]) => {
 		setForm((prev) => ({ ...prev, [key]: value }));
@@ -47,9 +49,18 @@ const AddSale: React.FC = () => {
 		return Object.keys(errs).length === 0;
 	};
 
-	const handleSubmit = async (e: React.FormEvent) => {
+	const handleReview = (e: React.FormEvent) => {
 		e.preventDefault();
 		if (!validate()) return;
+		setPreviewOpen(true);
+	};
+
+	const handleBackToEdit = () => {
+		if (saving) return;
+		setPreviewOpen(false);
+	};
+
+	const handleConfirmSave = async () => {
 		setSaving(true);
 		try {
 			const payload = {
@@ -68,11 +79,13 @@ const AddSale: React.FC = () => {
 				soldBy: form.soldBy.trim(),
 			};
 			const res = await salesService.createSale(payload, buildAuthConfig());
-			if (!res.status || (res.errorCode !== 201 && res.errorCode !== 200)) {
-				throw new Error(res.internalMessage || 'Create failed');
+			if (!res?.status) {
+				throw new Error(res?.internalMessage || 'Create failed');
 			}
 			toast.success('Sale created');
-			navigate('/', { replace: true });
+			setPreviewOpen(false);
+			setForm(createInitialForm());
+			setErrors({});
 		} catch (err: any) {
 			if (err.response?.status === 401) {
 				logout();
@@ -104,7 +117,7 @@ const AddSale: React.FC = () => {
 						Tip: enter quantities first and the live totals will update automatically.
 					</p>
 
-					<form className="add-sale-form" onSubmit={handleSubmit} noValidate>
+					<form className="add-sale-form" onSubmit={handleReview} noValidate>
 						<div className="add-sale-grid add-sale-grid--2">
 							<Field label="Date" required>
 								<Input
@@ -204,13 +217,25 @@ const AddSale: React.FC = () => {
 							<Button variant="secondary" type="button" onClick={() => navigate('/')}>
 								Cancel
 							</Button>
-							<Button type="submit" loading={saving}>
-								Create Sale
+							<Button type="submit">
+								Review &amp; Save
 							</Button>
 						</div>
 					</form>
 				</div>
 			</Card>
+
+			<Suspense fallback={null}>
+				<SalePreviewModal
+					open={previewOpen}
+					form={form}
+					totalCans={totalCans}
+					totalAmount={totalAmount}
+					saving={saving}
+					onEdit={handleBackToEdit}
+					onConfirm={handleConfirmSave}
+				/>
+			</Suspense>
 		</div>
 	);
 };
