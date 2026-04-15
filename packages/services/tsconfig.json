@@ -4,6 +4,7 @@
     "noUnusedLocals": false,
     "module": "nodenext",
     "moduleResolution": "nodenext",
+    "ignoreDeprecations": "6.0",
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
