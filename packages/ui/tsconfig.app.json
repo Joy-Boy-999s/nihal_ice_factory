@@ -4,8 +4,16 @@
     "outDir": "dist",
     "tsBuildInfoFile": "dist/tsconfig.app.tsbuildinfo",
     "jsx": "react-jsx",
-    "lib": ["dom"],
-    "rootDir": "src"
+    "lib": ["dom", "dom.iterable", "es2022"],
+    "rootDir": "src",
+    "paths": {
+      "@nihal-ice-factory/shared-services": [
+        "../../libs/shared-services/src/index.ts"
+      ],
+      "@nihal-ice-factory/shared-models": [
+        "../../libs/shared-models/src/index.ts"
+      ]
+    }
   },
   "exclude": [
     "out-tsc",

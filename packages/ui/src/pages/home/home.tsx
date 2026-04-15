@@ -373,8 +373,8 @@ const Home: React.FC = () => {
       );
       const results = await Promise.all(promises);
       const records = results
-        .filter((r) => r.status && r.errorCode === 200)
-        .map((r) => {
+        .filter((r: any) => r.status && r.errorCode === 200)
+        .map((r: any) => {
           const d = r.data?.data ?? r.data;
           return { ...d, totalCans: Number(d.totalCans) };
         });

@@ -1,7 +1,23 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx nx *)"
+      "Bash(npx nx *)",
+      "Bash(npx vite *)",
+      "Bash(curl -s http://localhost:4321/)",
+      "Bash(curl -s http://localhost:4321/assets/index--9qxvc6w.js)",
+      "Bash(curl -s \"http://localhost:4399/src/app/app.tsx\")",
+      "Bash(curl -s \"http://localhost:4399/src/app-layout/app-routes.tsx\")",
+      "Bash(curl -s \"http://localhost:4555/src/components/index.ts\")",
+      "Bash(node /tmp/test-ui.mjs)",
+      "Bash(node ./test-ui.mjs)",
+      "Bash(npx tsc *)",
+      "Bash(node --input-type=module -e ' *)",
+      "Bash(ls packages/ui/*.json packages/ui/.env*)",
+      "Bash(node -e \"console.log\\('react', require\\('react/package.json'\\).version\\); console.log\\('react-dom', require\\('react-dom/package.json'\\).version\\); console.log\\('vite', require\\('vite/package.json'\\).version\\); console.log\\('plugin-react', require\\('@vitejs/plugin-react/package.json'\\).version\\);\")",
+      "Bash(npm install *)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
     ]
   }
 }
