@@ -1,0 +1,56 @@
+.ui-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.ui-input:hover { border-color: var(--color-text-muted); }
+
+.ui-input:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.12);
+}
+
+.ui-input--invalid {
+  border-color: var(--color-danger);
+}
+.ui-input--invalid:focus-within {
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+}
+
+.ui-input__control {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--color-text);
+  padding: 8px 12px;
+  font-size: var(--font-size-md);
+  border-radius: var(--radius-md);
+}
+
+.ui-input__control::placeholder { color: var(--color-text-subtle); }
+.ui-input__control:disabled { color: var(--color-text-muted); background: var(--color-surface-alt); cursor: not-allowed; }
+
+.ui-input--sm .ui-input__control { padding: 6px 10px; font-size: var(--font-size-sm); }
+.ui-input--md .ui-input__control { padding: 9px 12px; }
+.ui-input--lg .ui-input__control { padding: 12px 14px; font-size: var(--font-size-lg); }
+
+.ui-input__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  padding: 0 10px;
+  pointer-events: none;
+}
+
+.ui-input--has-left .ui-input__control { padding-left: 0; }
+.ui-input--has-right .ui-input__control { padding-right: 0; }
