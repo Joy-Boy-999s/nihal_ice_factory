@@ -4,6 +4,7 @@
     "noUnusedLocals": false,
     "module": "Node16",
     "moduleResolution": "Node16",
+    "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
       "@nihal-ice-factory/shared-services": [

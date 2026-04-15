@@ -43,6 +43,6 @@
     }
   },
   "devDependencies": {
-    "fast-uri": "^3.0.6"
+    "fast-uri": "^3.1.0"
   }
 }
