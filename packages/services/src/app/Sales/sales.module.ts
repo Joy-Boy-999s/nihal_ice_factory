@@ -3,6 +3,7 @@ import { CacheModule } from '@nestjs/cache-manager';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
 
 import { Sale } from './entities/sale.entity';
 import { SalesController } from './sales.controller';
@@ -22,6 +23,7 @@ import { GenericTransactionManager } from '../../database/trasanction-manager';
         signOptions: { expiresIn: '30d' },
       }),
     }),
+    PassportModule.register({ defaultStrategy: 'jwt' }),
     CacheModule.register({ isGlobal: true, ttl: 300 }),
   ],
   controllers: [SalesController],

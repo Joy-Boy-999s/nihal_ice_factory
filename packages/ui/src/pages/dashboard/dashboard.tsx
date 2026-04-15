@@ -1,139 +1,66 @@
-import React from 'react';
-import { Bar, Line } from 'react-chartjs-2';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  LineElement,
-  PointElement,
-  Title,
-  Tooltip,
-  Legend,
-} from 'chart.js';
+import React, { Suspense, lazy } from 'react';
 import { Card, PageHeader } from '../../components';
-import './dashboard.css';
+import DashboardSkeleton from './components/DashboardSkeleton';
+import DashboardToolbar from './components/DashboardToolbar';
+import { useDashboardMetrics } from './utils/use-dashboard-metrics';
+import { useDashboardSeo } from './utils/use-dashboard-seo';
+import './styles/dashboard.css';
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  LineElement,
-  PointElement,
-  Title,
-  Tooltip,
-  Legend
-);
+const DashboardStats = lazy(() => import('./components/DashboardStats'));
+const DashboardCharts = lazy(() => import('./components/DashboardCharts'));
 
-const chartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: {
-      position: 'top' as const,
-      labels: { font: { size: 12 }, color: '#64748b' },
-    },
-    tooltip: {
-      backgroundColor: '#0f172a',
-      titleFont: { size: 13 },
-      bodyFont: { size: 12 },
-    },
-  },
-  scales: {
-    x: { grid: { display: false }, ticks: { color: '#64748b' } },
-    y: { grid: { color: '#e5e7eb' }, ticks: { color: '#64748b' } },
-  },
-};
-
-const thisMonth = {
-  labels: ['Apr 1', 'Apr 5', 'Apr 10', 'Apr 15', 'Apr 20', 'Apr 23'],
-  datasets: [
-    {
-      label: 'Sales (Rs)',
-      data: [200, 350, 400, 300, 500, 250],
-      backgroundColor: 'rgba(59, 130, 246, 0.6)',
-      borderColor: 'rgba(59, 130, 246, 1)',
-      borderWidth: 1,
-      borderRadius: 6,
-    },
-  ],
-};
-
-const thisYear = {
-  labels: ['Jan', 'Feb', 'Mar', 'Apr'],
-  datasets: [
-    {
-      label: 'Sales (Rs)',
-      data: [5000, 6000, 7000, 7900],
-      fill: true,
-      backgroundColor: 'rgba(16, 185, 129, 0.1)',
-      borderColor: 'rgba(16, 185, 129, 1)',
-      tension: 0.3,
-    },
-  ],
-};
-
-const thisWeek = {
-  labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-  datasets: [
-    {
-      label: 'Sales (Rs)',
-      data: [100, 150, 200, 500, 300, 400, 250],
-      backgroundColor: 'rgba(236, 72, 153, 0.6)',
-      borderColor: 'rgba(236, 72, 153, 1)',
-      borderWidth: 1,
-      borderRadius: 6,
-    },
-  ],
-};
-
-interface StatCardProps {
-  label: string;
-  value: string;
-  delta?: string;
-  tone?: 'neutral' | 'success' | 'primary' | 'warning';
-}
-
-const StatCard: React.FC<StatCardProps> = ({ label, value, delta, tone = 'neutral' }) => (
-  <div className={`stat-card stat-card--${tone}`}>
-    <span className="stat-card__label">{label}</span>
-    <span className="stat-card__value">{value}</span>
-    {delta && <span className="stat-card__delta">{delta}</span>}
-  </div>
-);
+const SEO_TITLE = 'Dashboard | Nihal Ice Factory ERP';
+const SEO_DESCRIPTION =
+  'Live ERP dashboard with real-time sales insights, monthly trends, and weekly performance for Nihal Ice Factory.';
 
 const Dashboard: React.FC = () => {
+  const { metrics, loading, refreshing, error, lastUpdated, refresh } = useDashboardMetrics();
+
+  useDashboardSeo({ title: SEO_TITLE, description: SEO_DESCRIPTION });
+
+  const subtitle = lastUpdated
+    ? `Real-time sales performance · updated ${lastUpdated}`
+    : 'Real-time sales performance across all units';
+
   return (
     <div className="dashboard-page">
       <PageHeader
         title="Dashboard"
-        subtitle="Overview of your factory performance"
+        subtitle={subtitle}
+        actions={
+          <DashboardToolbar
+            lastUpdated={lastUpdated}
+            refreshing={refreshing}
+            onRefresh={refresh}
+          />
+        }
       />
 
-      <div className="dashboard-page__stats">
-        <StatCard label="Current Inventory" value="1,250 kg" delta="+4.2% vs last week" tone="primary" />
-        <StatCard label="Sales Today" value="Rs 250" delta="2 orders" tone="success" />
-        <StatCard label="Sales This Month" value="Rs 7,900" delta="+12% MoM" tone="success" />
-        <StatCard label="Pending Deliveries" value="8" delta="2 overdue" tone="warning" />
-      </div>
+      {error && (
+        <div role="alert">
+          <Card className="dashboard-page__error">
+            <strong>Unable to load dashboard.</strong> {error}
+          </Card>
+        </div>
+      )}
 
-      <div className="dashboard-page__charts">
-        <Card title="This Month's Sales">
-          <div className="dashboard-page__chart">
-            <Bar data={thisMonth} options={chartOptions} />
-          </div>
-        </Card>
-        <Card title="This Year's Sales">
-          <div className="dashboard-page__chart">
-            <Line data={thisYear} options={chartOptions} />
-          </div>
-        </Card>
-        <Card title="This Week's Sales">
-          <div className="dashboard-page__chart">
-            <Bar data={thisWeek} options={chartOptions} />
-          </div>
-        </Card>
-      </div>
+      {loading && !metrics ? (
+        <>
+          <DashboardSkeleton variant="stats" />
+          <DashboardSkeleton variant="charts" />
+        </>
+      ) : (
+        metrics && (
+          <>
+            <Suspense fallback={<DashboardSkeleton variant="stats" />}>
+              <DashboardStats items={metrics.stats} />
+            </Suspense>
+            <Suspense fallback={<DashboardSkeleton variant="charts" />}>
+              <DashboardCharts charts={metrics.charts} />
+            </Suspense>
+          </>
+        )
+      )}
     </div>
   );
 };

@@ -12,6 +12,13 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 			imports: [ConfigModule],
 			inject: [ConfigService],
 			useFactory: (cfg: ConfigService) => {
+				const nodeEnv = (cfg.get<string>('NODE_ENV') || 'development').toLowerCase();
+				const isProduction = nodeEnv === 'production';
+
+				const dbLoggingRaw = (cfg.get<string>('DB_LOGGING') || '').toLowerCase();
+				const dbLoggingEnabled =
+					dbLoggingRaw === 'true' || dbLoggingRaw === '1' || dbLoggingRaw === 'yes';
+
 				// Pull each value, throw if missing
 				const host = cfg.get<string>('DB_HOST');
 				if (!host) {
@@ -54,6 +61,11 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 					database,
 					migrations: ['dist/database/migrations/*.{ts,js}'],
 					synchronize: true,
+					logging: dbLoggingEnabled
+						? ['query', 'error', 'warn', 'schema', 'migration']
+						: !isProduction,
+					logger: 'advanced-console' as const,
+					maxQueryExecutionTime: 500,
 					autoLoadEntities: true,
 					extra: {
 						connectionLimit: 10,
