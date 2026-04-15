@@ -26,21 +26,21 @@
         }
       },
       "serve": {
-        "executor": "@nx/vite:dev",
+        "executor": "@nx/vite:dev-server",
         "options": {
+          "buildTarget": "@nihal-ice-factory/ui:build",
           "configFile": "packages/ui/vite.config.ts"
         }
       }
     }
   },
   "devDependencies": {
-    "@nx/vite": "^20.8.1",
-    "@vitejs/plugin-react": "latest",
-    "fast-uri": "^3.0.6",
-    "vite": "latest"
+    "@nx/vite": "^22.6.5",
+    "@vitejs/plugin-react": "^4.7.0",
+    "vite": "^6.4.2"
   },
   "dependencies": {
-    "react": "latest",
-    "react-dom": "latest"
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
   }
 }

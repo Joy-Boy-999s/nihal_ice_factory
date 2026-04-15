@@ -1,0 +1,96 @@
+.ui-table-wrap {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.ui-table-scroll {
+  overflow-x: auto;
+}
+
+.ui-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.ui-table thead th {
+  background: var(--color-surface-alt);
+  color: var(--color-text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 11px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.ui-table tbody td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+  vertical-align: middle;
+}
+
+.ui-table tbody tr:last-child td { border-bottom: none; }
+
+.ui-table tbody tr:hover { background: var(--color-surface-alt); }
+
+.ui-table__row--selected { background: var(--color-primary-soft) !important; }
+
+.ui-table__select { width: 44px; text-align: center; }
+.ui-table__select input { cursor: pointer; width: 16px; height: 16px; accent-color: var(--color-primary); }
+
+.ui-table__state {
+  text-align: center;
+  padding: var(--space-10) var(--space-4);
+  color: var(--color-text-muted);
+}
+
+.ui-table__spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-border-strong);
+  border-right-color: var(--color-primary);
+  border-radius: 50%;
+  animation: ui-table-spin 0.7s linear infinite;
+  vertical-align: -2px;
+  margin-right: 6px;
+}
+@keyframes ui-table-spin { to { transform: rotate(360deg); } }
+
+.ui-table__pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.ui-table__page-controls { display: flex; align-items: center; gap: var(--space-2); }
+
+.ui-table__page-btn {
+  padding: 6px 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  cursor: pointer;
+}
+.ui-table__page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ui-table__page-btn:not(:disabled):hover { background: var(--color-surface-alt); }
+
+.ui-table__page-num { color: var(--color-text); font-weight: 500; }

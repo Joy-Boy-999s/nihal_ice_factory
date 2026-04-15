@@ -76,7 +76,7 @@ export class UserService {
         return new CommonResponse(false, 401, 'Invalid credentials');
       }
 
-      const payload = { username: user.username, sub: user.id };
+      const payload = { username: user.username, sub: user.id, role: user.role };
       const accessToken = this.jwtService.sign(payload, { expiresIn: '7d' });
       const refreshToken = this.jwtService.sign(payload, { expiresIn: '15d' });
 

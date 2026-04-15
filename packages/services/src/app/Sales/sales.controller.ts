@@ -1,15 +1,40 @@
-import { Controller, Post, Body, Get, Param, ParseIntPipe, Put, Delete, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  HttpCode,
+  HttpStatus,
+  MessageEvent,
+  Param,
+  ParseIntPipe,
+  Post,
+  Put,
+  Req,
+  Sse,
+  UseGuards,
+} from '@nestjs/common';
 import { SalesService } from './sales.service';
 import { ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CommonResponse, DeleteSalesDto } from '@nihal-ice-factory/shared-models';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { SaleUpdateDto} from './dto/update-sale.dto';
 import { SaleIdRequestDto } from './dto/sale-id-request.dto';
+import { JwtAuthGuard } from '../jwt-auth.guard';
+import { Observable, from, interval, merge, of } from 'rxjs';
+import { catchError, map, startWith, switchMap } from 'rxjs/operators';
 
 @ApiTags('Sales')
 @Controller('sales')
 export class SalesController {
   constructor(private readonly salesService: SalesService) {}
+
+  private ensureAdmin(user: any): void {
+    if (String(user?.role || '').toUpperCase() !== 'ADMIN') {
+      throw new ForbiddenException('Dashboard metrics are available only for admin users');
+    }
+  }
 
   @Post('createSale')
   @ApiBody({ type: CreateSaleDto })
@@ -32,6 +57,55 @@ export class SalesController {
     } catch (error) {
       return new CommonResponse(false, 500, 'Failed to fetch sales', error);
     }
+  }
+
+  @Get('getDashboardMetrics')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get aggregated dashboard metrics (stats + chart series)' })
+  @ApiResponse({ status: 200, description: 'Dashboard metrics fetched successfully', type: CommonResponse })
+  async getDashboardMetrics(@Req() req: any): Promise<CommonResponse> {
+    this.ensureAdmin(req.user);
+    return this.salesService.getDashboardMetrics();
+  }
+
+  @Sse('dashboardMetrics/stream')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'SSE stream for live dashboard metrics (admin only)' })
+  streamDashboardMetrics(@Req() req: any): Observable<MessageEvent> {
+    this.ensureAdmin(req.user);
+
+    const metrics$ = interval(15000).pipe(
+      startWith(0),
+      switchMap(() =>
+        from(this.salesService.getDashboardMetrics()).pipe(
+          map(
+            (response: CommonResponse): MessageEvent => ({
+              type: 'metrics',
+              retry: 1000,
+              data: response,
+            }),
+          ),
+          catchError((error: unknown) => {
+            const message = error instanceof Error ? error.message : 'Dashboard SSE error';
+            return of<MessageEvent>({
+              type: 'metrics-error',
+              data: new CommonResponse(false, 500, message, null),
+            });
+          }),
+        ),
+      ),
+    );
+
+    const heartbeat$ = interval(5000).pipe(
+      map(
+        (): MessageEvent => ({
+          type: 'heartbeat',
+          data: { ts: new Date().toISOString() },
+        }),
+      ),
+    );
+
+    return merge(metrics$, heartbeat$);
   }
 
   @Post('getSaleById')
