@@ -6,15 +6,17 @@
 }
 
 .ui-field__label {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 700;
   color: var(--color-text);
-  letter-spacing: -0.01em;
+  letter-spacing: 0.01em;
+  user-select: none;
 }
 
 .ui-field__required {
   color: var(--color-danger);
-  margin-left: 2px;
+  margin-left: 3px;
+  font-weight: 800;
 }
 
 .ui-field__control { display: flex; }
@@ -23,19 +25,19 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: var(--font-size-xs);
+  font-size: 11px;
   color: var(--color-danger);
-  font-weight: 500;
-  animation: field-error-in 180ms var(--ease-out) both;
+  font-weight: 600;
+  animation: field-error-slide 200ms var(--ease-standard) both;
 }
 
-@keyframes field-error-in {
+@keyframes field-error-slide {
   from { opacity: 0; transform: translateY(-4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
 .ui-field__hint {
-  font-size: var(--font-size-xs);
+  font-size: 11px;
   color: var(--color-text-muted);
   line-height: 1.4;
 }

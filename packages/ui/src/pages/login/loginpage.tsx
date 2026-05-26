@@ -10,6 +10,7 @@ import {
 } from '@nihal-ice-factory/shared-models';
 import { Button, Field, Input, Modal, useToast } from '../../components';
 import { login, isAuthenticated, isAdmin } from '../../lib/auth';
+import { SnowflakeIcon, MailIcon, LockIcon, UserIcon } from '../../layout/nav-icons';
 import './login.css';
 
 type Mode = 'login' | 'register';
@@ -152,10 +153,12 @@ const LoginPage: React.FC = () => {
     <div className="login-page">
       <div className="login-page__panel">
         <div className="login-page__brand">
-          <div className="login-page__brand-logo">❄</div>
+          <div className="login-page__brand-logo">
+            <SnowflakeIcon width={26} height={26} />
+          </div>
           <div>
-            <h1 className="login-page__brand-title">KP Ice Factory</h1>
-            <p className="login-page__brand-subtitle">Operations Management</p>
+            <h1 className="login-page__brand-title">Nihal Ice Factory</h1>
+            <p className="login-page__brand-subtitle">ERP Operations Suite</p>
           </div>
         </div>
 
@@ -177,6 +180,7 @@ const LoginPage: React.FC = () => {
               placeholder="you@example.com"
               invalid={!!errors.email}
               autoComplete="email"
+              leftIcon={<MailIcon width={16} height={16} />}
             />
           </Field>
 
@@ -188,6 +192,7 @@ const LoginPage: React.FC = () => {
                 placeholder="yourname"
                 invalid={!!errors.username}
                 autoComplete="username"
+                leftIcon={<UserIcon width={16} height={16} />}
               />
             </Field>
           )}
@@ -200,6 +205,7 @@ const LoginPage: React.FC = () => {
               placeholder="••••••••"
               invalid={!!errors.password}
               autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+              leftIcon={<LockIcon width={16} height={16} />}
             />
           </Field>
 

@@ -5,12 +5,7 @@
   gap: var(--space-4);
   margin-bottom: var(--space-6);
   flex-wrap: wrap;
-  animation: page-header-in 260ms var(--ease-out) both;
-}
-
-@keyframes page-header-in {
-  from { opacity: 0; transform: translateY(-8px); }
-  to   { opacity: 1; transform: translateY(0); }
+  animation: page-header-in 300ms var(--ease-standard) both;
 }
 
 .ui-page-header__title-group {
@@ -23,20 +18,15 @@
   font-size: var(--font-size-2xl);
   font-weight: 800;
   color: var(--color-text);
-  letter-spacing: -0.03em;
+  letter-spacing: -0.035em;
   line-height: 1.1;
-  /* Gradient title */
-  background: linear-gradient(135deg, var(--color-text) 30%, var(--color-primary) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 
 .ui-page-header__subtitle {
-  margin-top: 2px;
+  font-size: 13px;
   color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
   font-weight: 400;
+  letter-spacing: 0;
 }
 
 .ui-page-header__actions {
@@ -44,6 +34,11 @@
   gap: var(--space-2);
   align-items: center;
   flex-wrap: wrap;
+}
+
+@keyframes page-header-in {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 @media (prefers-reduced-motion: reduce) {

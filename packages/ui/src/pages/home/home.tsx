@@ -22,6 +22,20 @@ import {
   calculateTotalCans,
   formatCurrency,
 } from '../../lib/pricing';
+import {
+  PlusIcon,
+  DownloadIcon,
+  SearchIcon,
+  EditIcon,
+  PrinterIcon,
+  TrashIcon,
+  CalendarIcon,
+  ClockIcon,
+  PersonIcon,
+  PhoneIcon,
+  StoreIcon,
+  BuildingIcon,
+} from '../../layout/nav-icons';
 import './home.css';
 
 interface Sale {
@@ -836,11 +850,11 @@ const Home: React.FC = () => {
         render: (row) => (
           <div className="home-page__row-actions">
             {isAdmin && (
-              <Button size="sm" variant="secondary" onClick={() => openEdit(row)}>
+              <Button size="sm" variant="secondary" onClick={() => openEdit(row)} leftIcon={<EditIcon width={13} height={13} />}>
                 Edit
               </Button>
             )}
-            <Button size="sm" variant="ghost" onClick={() => handlePrint(row)}>
+            <Button size="sm" variant="ghost" onClick={() => handlePrint(row)} leftIcon={<PrinterIcon width={13} height={13} />}>
               Print
             </Button>
             {isAdmin && (
@@ -848,8 +862,10 @@ const Home: React.FC = () => {
                 size="sm"
                 variant="ghost"
                 onClick={() => setConfirmDelete({ open: true, ids: [row.id] })}
+                leftIcon={<TrashIcon width={13} height={13} />}
+                className="home-page__row-delete"
               >
-                Delete
+                Del
               </Button>
             )}
           </div>
@@ -867,10 +883,12 @@ const Home: React.FC = () => {
         subtitle="Manage your factory sales records"
         actions={
           <>
-            <Button variant="secondary" onClick={handleExport}>
+            <Button variant="secondary" onClick={handleExport} leftIcon={<DownloadIcon width={15} height={15} />}>
               Export Excel
             </Button>
-            <Button onClick={openAdd}>+ Add Sale</Button>
+            <Button onClick={openAdd} leftIcon={<PlusIcon width={15} height={15} />}>
+              Add Sale
+            </Button>
           </>
         }
       />
@@ -885,11 +903,12 @@ const Home: React.FC = () => {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 size="sm"
+                leftIcon={<SearchIcon width={14} height={14} />}
               />
             </div>
             {selectedKeys.length > 0 && (
               <>
-                <Button size="sm" variant="secondary" onClick={handleBulkPrint}>
+                <Button size="sm" variant="secondary" onClick={handleBulkPrint} leftIcon={<PrinterIcon width={13} height={13} />}>
                   Print ({selectedKeys.length})
                 </Button>
                 {isAdmin && (
@@ -902,6 +921,7 @@ const Home: React.FC = () => {
                         ids: selectedKeys.map((k) => Number(k)),
                       })
                     }
+                    leftIcon={<TrashIcon width={13} height={13} />}
                   >
                     Delete ({selectedKeys.length})
                   </Button>
@@ -947,6 +967,7 @@ const Home: React.FC = () => {
                 type="date"
                 value={form.date}
                 onChange={(e) => setField('date', e.target.value)}
+                leftIcon={<CalendarIcon width={15} height={15} />}
               />
             </Field>
             <Field label="Time" required>
@@ -954,6 +975,7 @@ const Home: React.FC = () => {
                 type="time"
                 value={form.time}
                 onChange={(e) => setField('time', e.target.value)}
+                leftIcon={<ClockIcon width={15} height={15} />}
               />
             </Field>
           </div>
@@ -966,6 +988,7 @@ const Home: React.FC = () => {
                   value={form.name}
                   onChange={(e) => setField('name', e.target.value)}
                   invalid={!!formErrors.name}
+                  leftIcon={<PersonIcon width={15} height={15} />}
                 />
               </Field>
               <Field label="Mobile" required error={formErrors.mobile}>
@@ -975,6 +998,7 @@ const Home: React.FC = () => {
                   invalid={!!formErrors.mobile}
                   inputMode="numeric"
                   maxLength={10}
+                  leftIcon={<PhoneIcon width={15} height={15} />}
                 />
               </Field>
               <Field label="Shop" required error={formErrors.shop}>
@@ -982,6 +1006,7 @@ const Home: React.FC = () => {
                   value={form.shop}
                   onChange={(e) => setField('shop', e.target.value)}
                   invalid={!!formErrors.shop}
+                  leftIcon={<StoreIcon width={15} height={15} />}
                 />
               </Field>
             </div>

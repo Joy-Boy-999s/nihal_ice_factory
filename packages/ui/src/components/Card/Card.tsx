@@ -22,7 +22,7 @@ export const Card: React.FC<CardProps> = ({
     <section className={`ui-card ${className}`}>
       {(title || actions) && (
         <header className="ui-card__header">
-          <div>
+          <div className="ui-card__title-block">
             {title && <h3 className="ui-card__title">{title}</h3>}
             {subtitle && <p className="ui-card__subtitle">{subtitle}</p>}
           </div>

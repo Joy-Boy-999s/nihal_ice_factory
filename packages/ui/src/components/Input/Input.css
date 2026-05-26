@@ -8,28 +8,32 @@
   border-radius: var(--radius-md);
   transition:
     border-color var(--transition-fast),
-    box-shadow var(--transition-fast),
-    background var(--transition-fast);
+    box-shadow    var(--transition-fast),
+    background    var(--transition-fast);
 }
 
-.ui-input:hover:not(:has(.ui-input__control:disabled)) {
+/* Hover */
+.ui-input:not(:has(.ui-input__control:disabled)):hover {
   border-color: #a5b4fc;
-  background: #fafaff;
+  background: #fafbff;
 }
 
+/* Focus */
 .ui-input:focus-within {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.14);
-  background: #fafaff;
+  box-shadow: var(--ring-primary);
+  background: #fafbff;
 }
 
+/* Error state */
 .ui-input--invalid {
   border-color: var(--color-danger);
 }
 .ui-input--invalid:focus-within {
-  box-shadow: var(--shadow-glow-danger);
+  box-shadow: var(--ring-danger);
 }
 
+/* ── Control ── */
 .ui-input__control {
   flex: 1;
   width: 100%;
@@ -38,11 +42,9 @@
   outline: none;
   background: transparent;
   color: var(--color-text);
-  padding: 9px 12px;
-  font-size: var(--font-size-md);
-  border-radius: var(--radius-md);
   font-family: inherit;
   font-weight: 400;
+  border-radius: var(--radius-md);
 }
 
 .ui-input__control::placeholder {
@@ -52,28 +54,32 @@
 
 .ui-input__control:disabled {
   color: var(--color-text-muted);
-  background: var(--color-surface-alt);
   cursor: not-allowed;
+  -webkit-text-fill-color: var(--color-text-muted);
 }
 
-/* Sizes */
-.ui-input--sm .ui-input__control { padding: 6px 10px; font-size: var(--font-size-sm); }
-.ui-input--md .ui-input__control { padding: 9px 12px; }
-.ui-input--lg .ui-input__control { padding: 12px 14px; font-size: var(--font-size-lg); }
+/* ── Sizes ── */
+.ui-input--sm .ui-input__control { padding: 6px 10px;  font-size: 12px; }
+.ui-input--md .ui-input__control { padding: 9px 12px;  font-size: 13px; }
+.ui-input--lg .ui-input__control { padding: 12px 14px; font-size: 15px; }
 
+/* ── Icon decorators ── */
 .ui-input__icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   color: var(--color-text-subtle);
-  padding: 0 10px;
-  pointer-events: none;
   transition: color var(--transition-fast);
+  line-height: 0;
 }
+
+.ui-input__icon--left  { padding: 0 4px 0 10px; }
+.ui-input__icon--right { padding: 0 10px 0 4px; }
 
 .ui-input:focus-within .ui-input__icon {
   color: var(--color-primary-light);
 }
 
-.ui-input--has-left .ui-input__control  { padding-left: 0; }
-.ui-input--has-right .ui-input__control { padding-right: 0; }
+.ui-input--has-left .ui-input__control  { padding-left: 4px; }
+.ui-input--has-right .ui-input__control { padding-right: 4px; }
