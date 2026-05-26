@@ -4,10 +4,13 @@ import { useAuth } from '../lib/auth';
 import { AppShell } from '../layout/AppShell';
 import { PageLoader } from '../components';
 
-const LoginPage = lazy(() => import('../pages/login/loginpage'));
-const Home = lazy(() => import('../pages/home/home'));
-const Dashboard = lazy(() => import('../pages/dashboard/dashboard'));
-const AddSale = lazy(() => import('../pages/addSales/addsale'));
+/* ── Lazy page imports ── */
+const LoginPage      = lazy(() => import('../pages/login/loginpage'));
+const Home           = lazy(() => import('../pages/home/home'));
+const Dashboard      = lazy(() => import('../pages/dashboard/dashboard'));
+const AddSale        = lazy(() => import('../pages/addSales/addsale'));
+const NotFoundPage   = lazy(() => import('../pages/errors/NotFoundPage'));
+const UnauthorizedPage = lazy(() => import('../pages/errors/UnauthorizedPage'));
 
 const LazyPage: React.FC<{ children: React.ReactNode; label: string }> = ({
   children,
@@ -18,23 +21,36 @@ const LazyPage: React.FC<{ children: React.ReactNode; label: string }> = ({
   </Suspense>
 );
 
+/* ────────────────────────────────────────────
+   ProtectedRoute — must be authenticated.
+   Unauthenticated → /login
+──────────────────────────────────────────── */
 const ProtectedRoute: React.FC = () => {
   const { authenticated } = useAuth();
   return authenticated ? <Outlet /> : <Navigate to="/login" replace />;
 };
 
+/* ────────────────────────────────────────────
+   AdminRoute — must be authenticated + ADMIN.
+   Not authenticated → /login
+   Authenticated but not ADMIN → /unauthorized (403 page)
+──────────────────────────────────────────── */
 const AdminRoute: React.FC = () => {
   const { authenticated, role } = useAuth();
   if (!authenticated) return <Navigate to="/login" replace />;
-  if (role !== 'ADMIN') return <Navigate to="/" replace />;
+  if (role !== 'ADMIN') return <Navigate to="/unauthorized" replace />;
   return <Outlet />;
 };
 
+/* ────────────────────────────────────────────
+   App route tree
+──────────────────────────────────────────── */
 const AppRoutes: React.FC = () => {
   const { authenticated } = useAuth();
 
   return (
     <Routes>
+      {/* ── Public ── */}
       <Route
         path="/login"
         element={
@@ -43,8 +59,12 @@ const AppRoutes: React.FC = () => {
           </LazyPage>
         }
       />
+
+      {/* ── Protected (authenticated users only) ── */}
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>
+
+          {/* Sales — all authenticated users */}
           <Route
             path="/"
             element={
@@ -53,6 +73,8 @@ const AppRoutes: React.FC = () => {
               </LazyPage>
             }
           />
+
+          {/* Add Sale — all authenticated users */}
           <Route
             path="/addsales"
             element={
@@ -61,6 +83,8 @@ const AppRoutes: React.FC = () => {
               </LazyPage>
             }
           />
+
+          {/* Dashboard — ADMIN only; non-admins are redirected to /unauthorized */}
           <Route element={<AdminRoute />}>
             <Route
               path="/dashboard"
@@ -71,8 +95,30 @@ const AppRoutes: React.FC = () => {
               }
             />
           </Route>
+
+          {/* 403 — Access Denied (shown inside the shell so nav is visible) */}
+          <Route
+            path="/unauthorized"
+            element={
+              <LazyPage label="Loading...">
+                <UnauthorizedPage />
+              </LazyPage>
+            }
+          />
+
+          {/* 404 — authenticated users hitting an unknown path */}
+          <Route
+            path="*"
+            element={
+              <LazyPage label="Loading...">
+                <NotFoundPage />
+              </LazyPage>
+            }
+          />
         </Route>
       </Route>
+
+      {/* 404 fallback for unauthenticated users — send them to login */}
       <Route
         path="*"
         element={<Navigate to={authenticated ? '/' : '/login'} replace />}
