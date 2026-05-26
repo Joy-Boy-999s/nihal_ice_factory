@@ -100,3 +100,16 @@ input, select, textarea {
   white-space: nowrap;
   border-width: 0;
 }
+
+/* Dark mode color-scheme */
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+[data-theme="light"] {
+  color-scheme: light;
+}
+
+/* Responsive body */
+@media (max-width: 480px) {
+  body { font-size: 13px; }
+}

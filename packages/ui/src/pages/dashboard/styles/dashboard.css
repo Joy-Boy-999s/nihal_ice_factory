@@ -272,3 +272,25 @@
   .dashboard-skeleton,
   .dashboard-page__live-dot { animation: none; }
 }
+
+[data-theme="dark"] .stat-card {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+[data-theme="dark"] .stat-card:hover { box-shadow: var(--shadow-md); }
+[data-theme="dark"] .stat-card--primary { border-color: var(--color-border); }
+[data-theme="dark"] .stat-card--primary:hover  { border-color: rgba(99,102,241,0.35); }
+[data-theme="dark"] .stat-card--success:hover  { border-color: rgba(16,185,129,0.30); }
+[data-theme="dark"] .stat-card--warning:hover  { border-color: rgba(245,158,11,0.30); }
+[data-theme="dark"] .dashboard-page__chart-card { background: var(--color-surface); }
+[data-theme="dark"] .dashboard-skeleton {
+  background: linear-gradient(108deg, #161b27 25%, #1c2233 45%, #161b27 65%);
+  background-size: 300% 100%;
+  border-color: var(--color-border);
+}
+[data-theme="dark"] .dashboard-page__error {
+  background: linear-gradient(135deg, var(--color-surface), var(--color-danger-soft));
+  border-color: rgba(244,63,94,0.25);
+  color: #fca5a5;
+}

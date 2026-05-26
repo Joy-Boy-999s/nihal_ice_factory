@@ -57,3 +57,14 @@
 .ui-card__body--padded {
   padding: var(--space-5) var(--space-6);
 }
+
+[data-theme="dark"] .ui-card {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+
+[data-theme="dark"] .ui-card__header {
+  background: linear-gradient(180deg, var(--color-surface-raised) 0%, var(--color-surface) 100%);
+  border-bottom-color: var(--color-border);
+}

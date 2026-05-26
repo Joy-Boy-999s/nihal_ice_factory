@@ -110,3 +110,36 @@
 @media (prefers-reduced-motion: reduce) {
   .ui-modal__backdrop, .ui-modal { animation: none; }
 }
+
+[data-theme="dark"] .ui-modal__backdrop { background: rgba(5,8,15,0.72); }
+[data-theme="dark"] .ui-modal {
+  background: var(--color-surface);
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-2xl), 0 0 0 1px rgba(255,255,255,0.04) inset;
+}
+[data-theme="dark"] .ui-modal__header {
+  background: linear-gradient(180deg, var(--color-surface-raised) 0%, var(--color-surface) 100%);
+  border-bottom-color: var(--color-border);
+}
+[data-theme="dark"] .ui-modal__footer {
+  background: linear-gradient(0deg, var(--color-surface-alt) 0%, var(--color-surface) 100%);
+  border-top-color: var(--color-border);
+}
+[data-theme="dark"] .ui-modal__close {
+  background: var(--color-surface-alt);
+  color: var(--color-text-muted);
+}
+[data-theme="dark"] .ui-modal__close:hover {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+/* Responsive modal */
+@media (max-width: 520px) {
+  .ui-modal__backdrop { padding: var(--space-4) var(--space-3); align-items: flex-end; }
+  .ui-modal { margin-top: 0; border-radius: var(--radius-2xl) var(--radius-2xl) 0 0; max-height: 90vh; }
+  .ui-modal__body { max-height: 55vh; }
+  .ui-modal__header { padding: 16px 16px 14px; }
+  .ui-modal__body   { padding: 16px; }
+  .ui-modal__footer { padding: 12px 16px; }
+}
