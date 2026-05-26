@@ -56,8 +56,8 @@ export const UserMenu: React.FC<UserMenuProps> = ({ role, onLogout }) => {
               {initial}
             </span>
             <div>
-              <div className="app-shell__user-name">{displayName}</div>
-              <div className="app-shell__user-role">{role}</div>
+              <div className="app-shell__user-dropdown-fullname">{displayName}</div>
+              <div className="app-shell__user-dropdown-role">{role}</div>
             </div>
           </div>
           <button

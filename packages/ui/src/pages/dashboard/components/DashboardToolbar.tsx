@@ -1,5 +1,6 @@
 import React from 'react';
 import { Button } from '../../../components';
+import { RefreshIcon } from '../../../layout/nav-icons';
 
 interface DashboardToolbarProps {
   lastUpdated: string;
@@ -26,6 +27,7 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
         onClick={onRefresh}
         loading={refreshing}
         aria-label="Refresh dashboard metrics"
+        leftIcon={!refreshing ? <RefreshIcon width={14} height={14} /> : undefined}
       >
         Refresh
       </Button>
