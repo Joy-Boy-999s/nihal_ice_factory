@@ -1,9 +1,14 @@
 .ui-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-xs);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
+  transition: box-shadow var(--transition-base), transform var(--transition-base);
+}
+
+.ui-card:hover {
+  box-shadow: var(--shadow-md);
 }
 
 .ui-card__header {
@@ -12,20 +17,27 @@
   justify-content: space-between;
   gap: var(--space-4);
   padding: var(--space-5) var(--space-6);
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+}
+
+.ui-card__title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
 .ui-card__title {
   font-size: var(--font-size-lg);
-  font-weight: 600;
+  font-weight: 700;
   color: var(--color-text);
+  letter-spacing: -0.02em;
 }
 
 .ui-card__subtitle {
-  margin-top: 4px;
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
+  font-weight: 400;
 }
 
 .ui-card__actions {
