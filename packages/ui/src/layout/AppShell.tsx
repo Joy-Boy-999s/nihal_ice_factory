@@ -4,6 +4,7 @@ import { logout, useAuth } from '../lib/auth';
 import { ChevronLeftIcon, ChevronRightIcon, MenuIcon, SnowflakeIcon } from './nav-icons';
 import { NAV_SECTIONS, type NavSection } from './nav-items';
 import { UserMenu } from './UserMenu';
+import { ThemeToggle } from '../components';
 import './AppShell.css';
 
 const findPageTitle = (pathname: string, sections: NavSection[]): string => {
@@ -132,6 +133,7 @@ export const AppShell: React.FC = () => {
           </div>
 
           <div className="app-shell__topbar-right">
+            <ThemeToggle />
             <UserMenu role={role} onLogout={handleLogout} />
           </div>
         </header>

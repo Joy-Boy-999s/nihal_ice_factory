@@ -26,3 +26,5 @@ export { PageLoader } from './PageLoader/PageLoader';
 
 export { ToastProvider, useToast } from './Toast/Toast';
 export type { ToastVariant } from './Toast/Toast';
+
+export { ThemeToggle } from './ThemeToggle/ThemeToggle';
