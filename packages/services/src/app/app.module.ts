@@ -8,6 +8,7 @@ import { AppController } from './app.controller';
 import { UserModule } from './user/user.module';
 import { SalesModule } from './Sales/sales.module';
 import { IceTypeModule } from './IcePrice/ice-price.module';
+import { PlantModule } from './Plant/plant.module';
 import { JwtStrategy } from './jwt.strategy';
 
 @Module({
@@ -26,6 +27,7 @@ import { JwtStrategy } from './jwt.strategy';
     UserModule,
     SalesModule,
     IceTypeModule,
+    PlantModule,
   ],
   controllers: [AppController],
   providers: [AppService, JwtStrategy],
