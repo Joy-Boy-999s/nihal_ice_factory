@@ -25,12 +25,22 @@ import { JwtAuthGuard } from '../jwt-auth.guard';
 import { Observable, from, interval, merge, of } from 'rxjs';
 import { catchError, map, startWith, switchMap } from 'rxjs/operators';
 
+interface JwtUser {
+  userId: string;
+  username: string;
+  role: string;
+}
+
+interface AuthenticatedRequest {
+  user: JwtUser;
+}
+
 @ApiTags('Sales')
 @Controller('sales')
 export class SalesController {
   constructor(private readonly salesService: SalesService) {}
 
-  private ensureAdmin(user: any): void {
+  private ensureAdmin(user: JwtUser): void {
     if (String(user?.role || '').toUpperCase() !== 'ADMIN') {
       throw new ForbiddenException('Dashboard metrics are available only for admin users');
     }
@@ -43,7 +53,8 @@ export class SalesController {
       const sale = await this.salesService.create(reqDto);
       return new CommonResponse(true, 0, 'Sale Created Successfully', sale);
     } catch (error) {
-      return new CommonResponse(false, 1, 'Sale Creation Failed', error);
+      const msg = error instanceof Error ? error.message : 'Sale Creation Failed';
+      return new CommonResponse(false, 1, msg, null);
     }
   }
 
@@ -55,7 +66,8 @@ export class SalesController {
       const sales = await this.salesService.getAllSales();
       return new CommonResponse(true, 200, 'Sales fetched successfully', sales);
     } catch (error) {
-      return new CommonResponse(false, 500, 'Failed to fetch sales', error);
+      const msg = error instanceof Error ? error.message : 'Failed to fetch sales';
+      return new CommonResponse(false, 500, msg, null);
     }
   }
 
@@ -63,7 +75,7 @@ export class SalesController {
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get aggregated dashboard metrics (stats + chart series)' })
   @ApiResponse({ status: 200, description: 'Dashboard metrics fetched successfully', type: CommonResponse })
-  async getDashboardMetrics(@Req() req: any): Promise<CommonResponse> {
+  async getDashboardMetrics(@Req() req: AuthenticatedRequest): Promise<CommonResponse> {
     this.ensureAdmin(req.user);
     return this.salesService.getDashboardMetrics();
   }
@@ -71,7 +83,7 @@ export class SalesController {
   @Sse('dashboardMetrics/stream')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'SSE stream for live dashboard metrics (admin only)' })
-  streamDashboardMetrics(@Req() req: any): Observable<MessageEvent> {
+  streamDashboardMetrics(@Req() req: AuthenticatedRequest): Observable<MessageEvent> {
     this.ensureAdmin(req.user);
 
     const metrics$ = interval(15000).pipe(
@@ -85,7 +97,7 @@ export class SalesController {
               data: response,
             }),
           ),
-          catchError((error: unknown) => {
+          catchError((error: Error) => {
             const message = error instanceof Error ? error.message : 'Dashboard SSE error';
             return of<MessageEvent>({
               type: 'metrics-error',
@@ -115,7 +127,8 @@ export class SalesController {
       const sale = await this.salesService.findOne(+reqDto.saleId);
       return new CommonResponse(true, 0, 'Sale Fetched Successfully', sale);
     } catch (error) {
-      return new CommonResponse(false, 1, 'Error fetching sale', error);
+      const msg = error instanceof Error ? error.message : 'Error fetching sale';
+      return new CommonResponse(false, 1, msg, null);
     }
   }
 
@@ -131,7 +144,8 @@ export class SalesController {
       const sale = await this.salesService.update(saleId, reqDto);
       return new CommonResponse(true, 0, 'Sale Updated Successfully', sale);
     } catch (error) {
-      return new CommonResponse(false, 1, 'Error updating sale', error);
+      const msg = error instanceof Error ? error.message : 'Error updating sale';
+      return new CommonResponse(false, 1, msg, null);
     }
   }
 
@@ -146,7 +160,8 @@ export class SalesController {
       await this.salesService.deleteOne(saleId);
       return new CommonResponse(true, 0, 'Sale Deleted Successfully', null);
     } catch (error) {
-      return new CommonResponse(false, 1, 'Error deleting sale', error);
+      const msg = error instanceof Error ? error.message : 'Error deleting sale';
+      return new CommonResponse(false, 1, msg, null);
     }
   }
 
@@ -161,11 +176,11 @@ export class SalesController {
       await this.salesService.deleteMany(reqDto.ids);
       return new CommonResponse(true, 0, 'Sales Deleted Successfully', null);
     } catch (error) {
-      return new CommonResponse(false, 1, 'Error deleting sales', error);
+      const msg = error instanceof Error ? error.message : 'Error deleting sales';
+      return new CommonResponse(false, 1, msg, null);
     }
   }
 
-  
   @Post('getPrintData')
   @ApiBody({ type: SaleIdRequestDto })
   async getPrintData(@Body() reqDto: SaleIdRequestDto): Promise<CommonResponse> {
@@ -173,7 +188,8 @@ export class SalesController {
       const printData = await this.salesService.getPrintData(+reqDto.saleId);
       return new CommonResponse(true, 0, 'Print Data Fetched Successfully', printData);
     } catch (error) {
-      return new CommonResponse(false, 1, 'Error fetching print data', error);
+      const msg = error instanceof Error ? error.message : 'Error fetching print data';
+      return new CommonResponse(false, 1, msg, null);
     }
   }
 }

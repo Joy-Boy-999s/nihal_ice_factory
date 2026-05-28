@@ -13,6 +13,17 @@ import { login, isAuthenticated, isAdmin } from '../../lib/auth';
 import { SnowflakeIcon, MailIcon, LockIcon, UserIcon } from '../../layout/nav-icons';
 import './login.css';
 
+// ── Typed shape of what the login endpoint returns inside `data` ──────────
+interface LoginPayload {
+  accessToken: string;
+  user: { role: string };
+}
+
+/** Minimal typed shape for network / API errors in catch blocks. */
+interface CatchError {
+  message?: string;
+}
+
 type Mode = 'login' | 'register';
 type ForgotStep = 'email' | 'otp' | 'reset';
 
@@ -96,17 +107,18 @@ const LoginPage: React.FC = () => {
       } else {
         const req: UserLoginModel = { email: form.email, password: form.password };
         const res: CommonResponse = await userService.loginUser(req);
-        if (res.status && res.errorCode === 200 && res.data?.accessToken) {
-          login(res.data.accessToken, res.data.user.role);
+        if (res.status && res.errorCode === 200) {
+          const payload = res.data as LoginPayload;
+          login(payload.accessToken, payload.user.role);
           toast.success('Signed in successfully');
-          const role = String(res.data.user.role).toUpperCase();
+          const role = String(payload.user.role).toUpperCase();
           navigate(role === UserRole.ADMIN ? '/dashboard' : '/', { replace: true });
         } else {
           throw new Error(res.internalMessage || 'Invalid credentials');
         }
       }
-    } catch (err: any) {
-      toast.error(err.message || 'Request failed');
+    } catch (err) {
+      toast.error((err as CatchError).message || 'Request failed');
     } finally {
       setLoading(false);
     }
@@ -142,8 +154,8 @@ const LoginPage: React.FC = () => {
           throw new Error(res.internalMessage || 'Reset failed');
         }
       }
-    } catch (err: any) {
-      setForgotError(err.message || 'Reset failed');
+    } catch (err) {
+      setForgotError((err as CatchError).message || 'Reset failed');
     } finally {
       setLoading(false);
     }

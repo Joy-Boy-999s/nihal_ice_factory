@@ -1,6 +1,17 @@
 import { Entity, Column, PrimaryGeneratedColumn } from 'typeorm';
 
-@Entity()
+/** Snapshot of one line item stored inside a sale record. */
+export interface SaleItemSnapshot {
+  iceTypeId:   number;
+  iceTypeName: string;
+  iceTypeCode: string;
+  quantity:    number;
+  /** Price at time of sale — snapshot so historical records are stable. */
+  price:    number;
+  subtotal: number;
+}
+
+@Entity('sales')
 export class Sale {
   @PrimaryGeneratedColumn()
   id: number;
@@ -11,6 +22,7 @@ export class Sale {
   @Column()
   time: string;
 
+  /** Factory plant selected for this sale (e.g. "Unit 1"). */
   @Column()
   unit: string;
 
@@ -23,22 +35,21 @@ export class Sale {
   @Column()
   shop: string;
 
-  @Column()
-  cans: number;
-
-  @Column()
-  blocks: number;
-
-  @Column()
-  pieces: number;
-
-  @Column('decimal', { precision: 10, scale: 2 })
-  totalCans: number;  
+  /**
+   * Snapshot of every line item sold.
+   * Stored as JSON so the record is self-contained and immune to master changes.
+   */
+  @Column({ type: 'json' })
+  items: SaleItemSnapshot[];
 
   @Column({ nullable: true })
   discount?: number;
 
+  /** Sum of all line-item quantities. */
   @Column()
+  totalUnits: number;
+
+  @Column('decimal', { precision: 10, scale: 2 })
   totalAmount: number;
 
   @Column()
