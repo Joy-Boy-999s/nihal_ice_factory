@@ -2,6 +2,7 @@ import React from 'react';
 import {
   AddSaleIcon,
   DashboardIcon,
+  PriceTagIcon,
   SalesIcon,
 } from './nav-icons';
 
@@ -30,6 +31,12 @@ export const NAV_SECTIONS: NavSection[] = [
     title: 'Analytics',
     items: [
       { label: 'Dashboard', to: '/dashboard', icon: DashboardIcon, adminOnly: true },
+    ],
+  },
+  {
+    title: 'Settings',
+    items: [
+      { label: 'Price Master', to: '/ice-price-master', icon: PriceTagIcon, adminOnly: true },
     ],
   },
 ];

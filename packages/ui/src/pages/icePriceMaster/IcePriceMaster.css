@@ -1,0 +1,278 @@
+.ipm-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6, 1.5rem);
+}
+
+/* ── Stats banner ── */
+.ipm-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-4, 1rem);
+}
+
+.ipm-stat {
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 14px;
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  transition: box-shadow 0.2s ease;
+}
+
+.ipm-stat:hover {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.07);
+}
+
+.ipm-stat__label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted, #64748b);
+}
+
+.ipm-stat__value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--color-text, #0f172a);
+  line-height: 1.1;
+}
+
+.ipm-stat__sub {
+  font-size: 0.78rem;
+  color: var(--color-muted, #64748b);
+}
+
+/* ── Toolbar ── */
+.ipm-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.ipm-toolbar__search {
+  flex: 1;
+  min-width: 220px;
+  position: relative;
+}
+
+.ipm-toolbar__search-icon {
+  position: absolute;
+  left: 0.875rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-muted, #94a3b8);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+}
+
+.ipm-toolbar__search-input {
+  width: 100%;
+  padding: 0.6rem 0.875rem 0.6rem 2.5rem;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 10px;
+  font-size: 0.875rem;
+  background: var(--color-surface, #fff);
+  color: var(--color-text, #0f172a);
+  transition: border-color 0.15s;
+  outline: none;
+}
+
+.ipm-toolbar__search-input:focus {
+  border-color: var(--color-primary, #3b82f6);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+/* ── Badge (active / inactive) ── */
+.ipm-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.ipm-badge--active {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.ipm-badge--inactive {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.ipm-badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* ── Ice type code chip ── */
+.ipm-type-code {
+  font-family: ui-monospace, 'Cascadia Code', 'Fira Mono', monospace;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--color-text, #0f172a);
+  background: var(--color-surface-alt, #f1f5f9);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 5px;
+  padding: 2px 8px;
+}
+
+/* ── Plant / Unit badge ── */
+.ipm-plant-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-primary, #4f46e5);
+  background: var(--color-primary-soft, #ede9fe);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+
+/* ── Price chip ── */
+.ipm-price {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-primary, #3b82f6);
+}
+
+/* ── Action buttons in table row ── */
+.ipm-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ipm-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border, #e5e7eb);
+  background: var(--color-surface, #fff);
+  color: var(--color-muted, #64748b);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.ipm-icon-btn:hover {
+  background: var(--color-surface-hover, #f1f5f9);
+  color: var(--color-text, #0f172a);
+  border-color: var(--color-border-hover, #cbd5e1);
+}
+
+.ipm-icon-btn--danger:hover {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fecaca;
+}
+
+/* ── Modal form grid ── */
+.ipm-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 520px) {
+  .ipm-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ipm-form-hint {
+  font-size: 0.78rem;
+  color: var(--color-muted, #64748b);
+  margin-top: 0.25rem;
+}
+
+.ipm-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+/* ── Empty state ── */
+.ipm-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  gap: 1rem;
+  color: var(--color-muted, #64748b);
+}
+
+.ipm-empty__icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--color-surface-alt, #f1f5f9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-muted, #94a3b8);
+}
+
+.ipm-empty__title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text, #0f172a);
+  margin: 0;
+}
+
+.ipm-empty__desc {
+  font-size: 0.875rem;
+  margin: 0;
+  text-align: center;
+}
+
+/* ── Delete confirm ── */
+.ipm-confirm-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0.5rem 0;
+}
+
+.ipm-confirm-message {
+  font-size: 0.9rem;
+  color: var(--color-text, #0f172a);
+  line-height: 1.55;
+}
+
+.ipm-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+/* ── Loading shimmer ── */
+.ipm-shimmer-row {
+  height: 48px;
+  background: linear-gradient(90deg, var(--color-surface-alt, #f1f5f9) 25%, var(--color-surface, #e9eef4) 50%, var(--color-surface-alt, #f1f5f9) 75%);
+  background-size: 200% 100%;
+  animation: ipm-shimmer 1.4s infinite;
+  border-radius: 8px;
+  margin-bottom: 0.5rem;
+}
+
+@keyframes ipm-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

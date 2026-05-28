@@ -2,6 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy, ExtractJwt } from 'passport-jwt';
+import { Request } from 'express';
+
+/** Shape of a decoded JWT payload for this application. */
+interface JwtPayload {
+  sub: string;
+  username: string;
+  role?: string;
+}
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -14,18 +22,19 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
         ExtractJwt.fromAuthHeaderAsBearerToken(),
-        (request: any) => request?.query?.token,
+        (request: Request): string | null =>
+          (request?.query?.['token'] as string | undefined) ?? null,
       ]),
       ignoreExpiration: false,
       secretOrKey: jwtSecret,
     });
   }
 
-  async validate(payload: any) {
+  async validate(payload: JwtPayload): Promise<{ userId: string; username: string; role: string }> {
     return {
-      userId: payload.sub,
+      userId:   payload.sub,
       username: payload.username,
-      role: String(payload?.role || 'USER').toUpperCase(),
+      role:     String(payload?.role || 'USER').toUpperCase(),
     };
   }
 }

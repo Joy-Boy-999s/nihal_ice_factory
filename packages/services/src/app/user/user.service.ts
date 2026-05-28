@@ -9,7 +9,6 @@ import { GenericTransactionManager } from '../../database/trasanction-manager';
 
 @Injectable()
 export class UserService {
-  logger: any;
   constructor(
     @InjectRepository(UserRepository)
     private readonly userRepository: UserRepository,

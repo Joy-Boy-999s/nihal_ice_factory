@@ -344,3 +344,12 @@ export const MoonIcon: React.FC<IconProps> = (p) => (
     <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
   </svg>
 );
+
+// ─────────── Settings / Master ───────────
+
+export const PriceTagIcon: React.FC<IconProps> = (p) => (
+  <svg {...base} {...p}>
+    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z" />
+    <line x1="7" y1="7" x2="7.01" y2="7" strokeWidth="2.5" strokeLinecap="round" />
+  </svg>
+);
