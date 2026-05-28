@@ -1,6 +1,7 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Get, Body, UseGuards } from '@nestjs/common';
 import { UserService } from './user.service';
-import { ApiBody, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../jwt-auth.guard';
 import { CreateUserModel, CommonResponse, UserLoginModel, UserIdRequestModel, UpdateUserModel, ResetPassowordModel, EmailRequestModel } from '@nihal-ice-factory/shared-models';
 
 export interface ScreenPreferencesModel {
@@ -82,6 +83,17 @@ export class UserController {
       return await this.userService.sendResetPasswordEmail(reqModel);
     } catch (error) {
       return new CommonResponse(false, 1, 'Error sending OTP', error);
+    }
+  }
+
+  @Get('getAll')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async getAllUsers(): Promise<CommonResponse> {
+    try {
+      return await this.userService.getAllUsers();
+    } catch (error) {
+      return new CommonResponse(false, 1, 'Error fetching users', error);
     }
   }
 }

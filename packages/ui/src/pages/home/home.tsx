@@ -4,10 +4,11 @@ import * as XLSX from 'xlsx';
 import {
   CommonResponse,
   IceTypeDto,
+  PlantDto,
   SaleUpdateDto,
   ResponsePayloadRecord,
 } from '@nihal-ice-factory/shared-models';
-import { IceTypeService, SalesHelpService } from '@nihal-ice-factory/shared-services';
+import { IceTypeService, PlantService, SalesHelpService } from '@nihal-ice-factory/shared-services';
 import {
   Button,
   Card,
@@ -153,20 +154,19 @@ const Home: React.FC = () => {
 
   const salesService   = useMemo(() => new SalesHelpService(), []);
   const iceTypeService = useMemo(() => new IceTypeService(), []);
+  const plantService   = useMemo(() => new PlantService(), []);
 
   const [sales, setSales]           = useState<Sale[]>([]);
   const [loading, setLoading]       = useState(false);
   const [query, setQuery]           = useState('');
   const [apiTypes, setApiTypes]     = useState<IceTypeDto[]>([]);
+  const [activePlants, setActivePlants] = useState<PlantDto[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([]);
 
-  // Plant dropdown options.
+  // Plant dropdown options — driven by Plant Master.
   const unitOptions = useMemo(
-    () =>
-      [...new Set(apiTypes.map((t) => t.plantUnit))]
-        .sort()
-        .map((u) => ({ label: u, value: u })),
-    [apiTypes],
+    () => activePlants.map((p) => ({ label: p.plantName, value: p.plantName })),
+    [activePlants],
   );
 
   const [modalOpen, setModalOpen]   = useState(false);
@@ -217,16 +217,26 @@ const Home: React.FC = () => {
 
   const fetchTypes = useCallback(async () => {
     try {
-      const res = await iceTypeService.getAllIceTypes(buildAuthConfig());
-      if (res?.status) {
-        const envelope = res.data as ResponsePayloadRecord | null;
+      const [typesRes, plantsRes] = await Promise.all([
+        iceTypeService.getAllIceTypes(buildAuthConfig()),
+        plantService.getActivePlants(buildAuthConfig()),
+      ]);
+
+      if (typesRes?.status) {
+        const envelope = typesRes.data as ResponsePayloadRecord | null;
         const raw      = (envelope?.['data'] ?? envelope) ?? [];
         setApiTypes(Array.isArray(raw) ? (raw as unknown as IceTypeDto[]) : []);
+      }
+
+      if (plantsRes?.status) {
+        const envelope = plantsRes.data as ResponsePayloadRecord | null;
+        const raw      = (envelope?.['data'] ?? envelope) ?? [];
+        setActivePlants(Array.isArray(raw) ? (raw as unknown as PlantDto[]) : []);
       }
     } catch {
       // Silently fall back.
     }
-  }, [iceTypeService]);
+  }, [iceTypeService, plantService]);
 
   useEffect(() => {
     fetchSales();

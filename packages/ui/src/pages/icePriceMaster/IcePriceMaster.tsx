@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { IceTypeService } from '@nihal-ice-factory/shared-services';
+import { IceTypeService, PlantService } from '@nihal-ice-factory/shared-services';
 import {
   IceTypeDto,
   CreateIceTypeDto,
   UpdateIceTypeDto,
+  PlantDto,
   ResponsePayloadRecord,
 } from '@nihal-ice-factory/shared-models';
 
@@ -30,6 +31,7 @@ import {
   Input,
   Modal,
   PageHeader,
+  Select,
   useToast,
 } from '../../components';
 import { buildAuthConfig, logout, useAuth } from '../../lib/auth';
@@ -69,8 +71,10 @@ const IcePriceMaster: React.FC = () => {
   const toast    = useToast();
   const { role } = useAuth();
   const iceTypeService = useMemo(() => new IceTypeService(), []);
+  const plantService   = useMemo(() => new PlantService(), []);
 
-  const [prices, setPrices] = useState<IceTypeDto[]>([]);
+  const [prices, setPrices]   = useState<IceTypeDto[]>([]);
+  const [plants, setPlants]   = useState<PlantDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [query, setQuery]     = useState('');
 
@@ -105,13 +109,23 @@ const IcePriceMaster: React.FC = () => {
   const fetchPrices = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await iceTypeService.getAllIceTypes(buildAuthConfig());
-      if (res?.status) {
-        const envelope = res.data as ResponsePayloadRecord | null;
+      const [typesRes, plantsRes] = await Promise.all([
+        iceTypeService.getAllIceTypes(buildAuthConfig()),
+        plantService.getAllPlants(buildAuthConfig()),
+      ]);
+
+      if (typesRes?.status) {
+        const envelope = typesRes.data as ResponsePayloadRecord | null;
         const raw = (envelope?.['data'] ?? envelope) ?? [];
         setPrices(Array.isArray(raw) ? (raw as unknown as IceTypeDto[]) : []);
       } else {
-        throw new Error(res?.internalMessage || 'Failed to load types');
+        throw new Error(typesRes?.internalMessage || 'Failed to load types');
+      }
+
+      if (plantsRes?.status) {
+        const envelope = plantsRes.data as ResponsePayloadRecord | null;
+        const raw = (envelope?.['data'] ?? envelope) ?? [];
+        setPlants(Array.isArray(raw) ? (raw as unknown as PlantDto[]) : []);
       }
     } catch (err) {
       const e = err as CatchError;
@@ -121,15 +135,15 @@ const IcePriceMaster: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [iceTypeService, toast, handleAuthError]);
+  }, [iceTypeService, plantService, toast, handleAuthError]);
 
   useEffect(() => { fetchPrices(); }, [fetchPrices]);
 
-  // ── Autocomplete suggestions ───────────────────────────────────────────────
+  // ── Plant options (from Plant Master) ──────────────────────────────────────
 
   const existingPlants = useMemo(
-    () => [...new Set(prices.map((p) => p.plantUnit))].sort(),
-    [prices],
+    () => plants.filter((p) => p.isActive).map((p) => p.plantName).sort(),
+    [plants],
   );
 
   // ── Filter ────────────────────────────────────────────────────────────────
@@ -474,19 +488,19 @@ const IcePriceMaster: React.FC = () => {
 
           {/* Plant */}
           <Field label="Plant / Unit" required error={formErrors.plantUnit}>
-            <Input
+            <Select
               id="ice-type-plant"
-              list="ipm-plant-list"
               value={form.plantUnit}
               onChange={(e) => setField('plantUnit', e.target.value)}
-              placeholder={existingPlants.length > 0 ? `e.g. ${existingPlants[0]}` : 'e.g. Unit 1'}
+              options={existingPlants.map((p) => ({ label: p, value: p }))}
+              placeholder={existingPlants.length === 0 ? 'No plants — add in Plant Master first' : 'Select plant'}
               invalid={!!formErrors.plantUnit}
-              disabled={saving || !!editing}
+              disabled={saving || !!editing || existingPlants.length === 0}
             />
-            <datalist id="ipm-plant-list">
-              {existingPlants.map((p) => <option key={p} value={p} />)}
-            </datalist>
-            <p className="ipm-form-hint">Type any plant name. Existing plants appear as suggestions.</p>
+            <p className="ipm-form-hint">
+              Plants are managed in the{' '}
+              <a href="/plant-master" style={{ color: 'var(--color-primary)' }}>Plant Master</a>.
+            </p>
           </Field>
 
           {/* Price */}

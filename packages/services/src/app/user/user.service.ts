@@ -146,6 +146,18 @@ export class UserService {
     }
   }
 
+  async getAllUsers(): Promise<CommonResponse> {
+    try {
+      const users = await this.userRepository.find({ order: { username: 'ASC' } as never });
+      // Strip sensitive fields before returning.
+      const sanitized = users.map(({ password, resetPasswordOtp, resetPasswordExpires, ...rest }) => rest);
+      return new CommonResponse(true, 200, 'Users fetched successfully', sanitized as never);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      return new CommonResponse(false, 500, errorMessage);
+    }
+  }
+
   async logoutUser(userId: string): Promise<CommonResponse> {
     try {
       if (!userId) {

@@ -1,7 +1,7 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SalesHelpService, IceTypeService } from '@nihal-ice-factory/shared-services';
-import { IceTypeDto, ResponsePayloadRecord } from '@nihal-ice-factory/shared-models';
+import { SalesHelpService, IceTypeService, PlantService } from '@nihal-ice-factory/shared-services';
+import { IceTypeDto, PlantDto, ResponsePayloadRecord } from '@nihal-ice-factory/shared-models';
 import { Button, Card, Field, Input, PageHeader, Select, useToast } from '../../components';
 import { buildAuthConfig, logout } from '../../lib/auth';
 import {
@@ -34,23 +34,23 @@ const AddSale: React.FC = () => {
   const toast       = useToast();
   const salesService   = useMemo(() => new SalesHelpService(), []);
   const iceTypeService = useMemo(() => new IceTypeService(), []);
+  const plantService   = useMemo(() => new PlantService(), []);
 
   const [form, setForm]       = useState<SaleForm>(createInitialForm());
   const [errors, setErrors]   = useState<ReturnType<typeof validateSaleForm>>({});
   const [saving, setSaving]   = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  // Full list from the master (all plants).
+  // Full list of ice types from the master.
   const [apiTypes, setApiTypes]           = useState<IceTypeDto[]>([]);
   const [typesLoading, setTypesLoading]   = useState(true);
 
-  // Unique plant names → drives the Unit dropdown.
+  // Active plants from Plant Master → drives the Unit dropdown.
+  const [activePlants, setActivePlants] = useState<PlantDto[]>([]);
+
   const unitOptions = useMemo(
-    () =>
-      [...new Set(apiTypes.map((t) => t.plantUnit))]
-        .sort()
-        .map((u) => ({ label: u, value: u })),
-    [apiTypes],
+    () => activePlants.map((p) => ({ label: p.plantName, value: p.plantName })),
+    [activePlants],
   );
 
   // Active ice types for the currently selected plant.
@@ -59,22 +59,32 @@ const AddSale: React.FC = () => {
     [apiTypes, form.unit],
   );
 
-  // Fetch all ice types once on mount.
+  // Fetch ice types + active plants once on mount.
   const fetchTypes = useCallback(async () => {
     setTypesLoading(true);
     try {
-      const res = await iceTypeService.getAllIceTypes(buildAuthConfig());
-      if (res?.status) {
-        const envelope = res.data as ResponsePayloadRecord | null;
+      const [typesRes, plantsRes] = await Promise.all([
+        iceTypeService.getAllIceTypes(buildAuthConfig()),
+        plantService.getActivePlants(buildAuthConfig()),
+      ]);
+
+      if (typesRes?.status) {
+        const envelope = typesRes.data as ResponsePayloadRecord | null;
         const raw = (envelope?.['data'] ?? envelope) ?? [];
         setApiTypes(Array.isArray(raw) ? (raw as unknown as IceTypeDto[]) : []);
+      }
+
+      if (plantsRes?.status) {
+        const envelope = plantsRes.data as ResponsePayloadRecord | null;
+        const raw = (envelope?.['data'] ?? envelope) ?? [];
+        setActivePlants(Array.isArray(raw) ? (raw as unknown as PlantDto[]) : []);
       }
     } catch {
       // Silently fall back — UI will show guidance.
     } finally {
       setTypesLoading(false);
     }
-  }, [iceTypeService]);
+  }, [iceTypeService, plantService]);
 
   useEffect(() => { fetchTypes(); }, [fetchTypes]);
 

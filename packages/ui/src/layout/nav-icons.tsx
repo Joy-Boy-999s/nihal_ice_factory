@@ -347,6 +347,31 @@ export const MoonIcon: React.FC<IconProps> = (p) => (
 
 // ─────────── Settings / Master ───────────
 
+export const UsersIcon: React.FC<IconProps> = (p) => (
+  <svg {...base} {...p}>
+    {/* Group / users icon */}
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  </svg>
+);
+
+export const FactoryIcon: React.FC<IconProps> = (p) => (
+  <svg {...base} {...p}>
+    {/* Factory building with chimney */}
+    <path d="M2 20V9l6-4v4l6-4v4l4-2v13H2Z" />
+    <line x1="2" y1="20" x2="22" y2="20" />
+    {/* Chimney */}
+    <rect x="16" y="7" width="2.5" height="6" rx="0.5" />
+    {/* Windows */}
+    <rect x="4"  y="13" width="3" height="3" rx="0.5" />
+    <rect x="9"  y="13" width="3" height="3" rx="0.5" />
+    {/* Door */}
+    <rect x="14" y="15" width="3" height="5" rx="0.5" />
+  </svg>
+);
+
 export const PriceTagIcon: React.FC<IconProps> = (p) => (
   <svg {...base} {...p}>
     <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z" />
