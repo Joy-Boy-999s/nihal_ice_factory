@@ -158,6 +158,34 @@ export class UserService {
     }
   }
 
+  /**
+   * Update a user's role.
+   * callerId is enforced at the controller level — an admin cannot demote themselves.
+   */
+  async updateUserRole(userId: string, role: string, callerId: string): Promise<CommonResponse> {
+    try {
+      if (callerId === userId) {
+        return new CommonResponse(false, 400, 'You cannot change your own role', null);
+      }
+
+      const user = await this.userRepository.findOne({ where: { id: userId } });
+      if (!user) {
+        return new CommonResponse(false, 404, 'User not found', null);
+      }
+
+      const validRoles = Object.values(UserRole) as string[];
+      if (!validRoles.includes(role.toUpperCase())) {
+        return new CommonResponse(false, 400, `Invalid role. Must be one of: ${validRoles.join(', ')}`, null);
+      }
+
+      await this.userRepository.update(userId, { role: role.toUpperCase() as UserRole });
+      return new CommonResponse(true, 200, `Role updated to ${role.toUpperCase()} successfully`, null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error updating role';
+      return new CommonResponse(false, 500, message, null);
+    }
+  }
+
   async logoutUser(userId: string): Promise<CommonResponse> {
     try {
       if (!userId) {
