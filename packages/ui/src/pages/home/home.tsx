@@ -1,1114 +1,968 @@
-import React, { useState, useEffect, useCallback, useMemo, FC } from 'react';
-import { motion } from 'framer-motion';
-import { Table, Modal, Form, Input, InputNumber, DatePicker, Button, Space, Select, Menu, Dropdown } from 'antd';
-import { DeleteOutlined, EditOutlined, PrinterOutlined, LogoutOutlined } from '@ant-design/icons';
-import moment from 'moment';
-import * as XLSX from 'xlsx';
-import Cookies from 'js-cookie';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import * as XLSX from 'xlsx';
+import {
+  CommonResponse,
+  IceTypeDto,
+  PlantDto,
+  SaleUpdateDto,
+  ResponsePayloadRecord,
+} from '@nihal-ice-factory/shared-models';
+import { IceTypeService, PlantService, SalesHelpService } from '@nihal-ice-factory/shared-services';
+import {
+  Button,
+  Card,
+  Column,
+  DataTable,
+  Field,
+  Input,
+  Modal,
+  PageHeader,
+  Select,
+  useToast,
+} from '../../components';
+import { buildAuthConfig, logout, useAuth } from '../../lib/auth';
+import { todayISO, nowHHMM } from '../../lib/date';
+import {
+  buildFormItems,
+  calculateTotal,
+  calculateTotalUnits,
+  formatCurrency,
+  getIceTypesForPlant,
+} from '../../lib/pricing';
+import {
+  PlusIcon,
+  DownloadIcon,
+  SearchIcon,
+  EditIcon,
+  PrinterIcon,
+  TrashIcon,
+  CalendarIcon,
+  ClockIcon,
+  PersonIcon,
+  PhoneIcon,
+  StoreIcon,
+} from '../../layout/nav-icons';
 import './home.css';
-import Navbar from '../navbar/navbar';
-import { ColumnsType } from 'antd/es/table';
-import { CommonResponse, SaleUpdateDto } from '@nihal-ice-factory/shared-models';
-import { SalesHelpService } from '@nihal-ice-factory/shared-services';
-import _ from 'lodash';
 
-// Define frontend Unit type
-type Unit = 'Unit 1' | 'Unit 2' | 'Unit 3' | string;
+// ── Typed helpers ────────────────────────────────────────────────────────────
+
+interface ApiError {
+  response?: { status?: number; data?: { internalMessage?: string } };
+  message?: string;
+}
+
+function toApiError(err: ApiError | Error): ApiError {
+  return err instanceof Error ? { message: err.message } : err;
+}
+
+// ── Domain types ─────────────────────────────────────────────────────────────
+
+interface SaleItemSnapshot {
+  iceTypeId:   number;
+  iceTypeName: string;
+  iceTypeCode: string;
+  quantity:    number;
+  price:       number;
+  subtotal:    number;
+}
 
 interface Sale {
-  id: number;
-  unit: Unit;
-  date: string;
-  time: string;
-  name: string;
-  mobile: string;
-  shop: string;
-  cans: number;
-  blocks: number;
-  pieces: number;
-  discount: number;
+  id:          number;
+  unit:        string;
+  date:        string;
+  time:        string;
+  name:        string;
+  mobile:      string;
+  shop:        string;
+  items:       SaleItemSnapshot[];
+  discount:    number;
+  totalUnits:  number;
   totalAmount: number;
-  totalCans: number | string;
-  soldBy: string;
+  soldBy:      string;
 }
 
-// Define CreateSaleDto to match CreateSaleModel
-interface CreateSaleDto {
-  date: string;
-  time: string;
-  unit: string;
-  name: string;
-  mobile: string;
-  shop: string;
-  cans: number;
-  blocks: number;
-  pieces: number;
-  totalCans: number;
-  discount?: number;
-  totalAmount: number;
-  soldBy: string;
+/** One editable line item in the home-page edit modal. */
+interface EditItem {
+  iceTypeId:   number;
+  iceTypeName: string;
+  iceTypeCode: string;
+  price:       number;
+  quantity:    string;
 }
 
-// Define UpdateSaleDto to match UpdateSaleModel
-interface UpdateSaleDto {
-  date?: string;
-  time?: string;
-  unit?: string;
-  name?: string;
-  mobile?: string;
-  shop?: string;
-  cans?: number;
-  blocks?: number;
-  pieces?: number;
-  totalCans?: number;
-  discount?: number;
+interface SaleForm {
+  date:     string;
+  time:     string;
+  unit:     string;
+  name:     string;
+  mobile:   string;
+  shop:     string;
+  items:    EditItem[];
+  discount: string;
+  soldBy:   string;
+}
+
+/** Print payload returned by getPrintData. */
+interface PrintRecord {
+  id?:          number;
+  unit?:        string;
+  date?:        string;
+  time?:        string;
+  name?:        string;
+  shop?:        string;
+  mobile?:      string;
+  soldBy?:      string;
+  discount?:    number;
+  totalUnits?:  number;
   totalAmount?: number;
-  soldBy?: string;
+  itemBreakdown?: {
+    iceTypeName: string;
+    iceTypeCode: string;
+    quantity:    number;
+    price:       number;
+    subtotal:    number;
+  }[];
 }
 
-const Home: FC = () => {
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [currentSale, setCurrentSale] = useState<Sale | null>(null);
-  const [form] = Form.useForm();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-  const [role, setRole] = useState<string>('USER');
-  const [loading, setLoading] = useState<boolean>(false);
-  const navigate = useNavigate();
-  const salesService = useMemo(() => new SalesHelpService(), []);
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-  // Debounced fetchSales to prevent rapid API calls
-  const debouncedFetchSales = useCallback(
-    _.debounce(async (token: string) => {
-      setLoading(true);
-      try {
-        const config = {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        };
+const MOBILE_RE = /^[6-9]\d{9}$/;
 
-        const response: CommonResponse = await salesService.getAllSales(config);
+const emptyForm = (): SaleForm => ({
+  date:     todayISO(),
+  time:     nowHHMM(),
+  unit:     '',
+  name:     '',
+  mobile:   '',
+  shop:     '',
+  items:    [],
+  discount: '0',
+  soldBy:   '',
+});
 
-        if (!response || typeof response !== 'object') {
-          throw new Error('Invalid response structure from server');
-        }
+// ── Component ────────────────────────────────────────────────────────────────
 
-        if (response.status && response.errorCode === 200) {
-          const nestedData = response.data && typeof response.data === 'object' ? response.data.data : [];
-          const salesData = Array.isArray(nestedData) ? nestedData : [];
-          const normalizedSales = salesData.map(sale => ({
-            ...sale,
-            totalCans: typeof sale.totalCans === 'string' ? parseFloat(sale.totalCans) : sale.totalCans,
-          }));
-          setSales(normalizedSales);
-          Modal.success({
-            title: 'Success',
-            content: response.internalMessage || 'Sales fetched successfully',
-          });
-        } else {
-          throw new Error(response.internalMessage || 'Failed to fetch sales');
-        }
-      } catch (error: any) {
-        console.error('Error fetching sales:', error);
-        if (error.response?.status === 401) {
-          Cookies.remove('accessToken');
-          Cookies.remove('userRole');
-          Modal.error({
-            title: 'Session Expired',
-            content: 'Your session has expired. Please log in again.',
-            onOk: () => navigate('/login', { replace: true }),
-          });
-        } else {
-          Modal.error({
-            title: 'Error',
-            content:
-              error.response?.data?.internalMessage ||
-              error.message ||
-              'An error occurred while fetching sales',
-          });
-        }
-      } finally {
-        setLoading(false);
-      }
-    }, 200),
-    [navigate, salesService]
+const Home: React.FC = () => {
+  const navigate  = useNavigate();
+  const toast     = useToast();
+  const { role }  = useAuth();
+  const isAdmin   = role === 'ADMIN';
+
+  const salesService   = useMemo(() => new SalesHelpService(), []);
+  const iceTypeService = useMemo(() => new IceTypeService(), []);
+  const plantService   = useMemo(() => new PlantService(), []);
+
+  const [sales, setSales]           = useState<Sale[]>([]);
+  const [loading, setLoading]       = useState(false);
+  const [query, setQuery]           = useState('');
+  const [apiTypes, setApiTypes]     = useState<IceTypeDto[]>([]);
+  const [activePlants, setActivePlants] = useState<PlantDto[]>([]);
+  const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([]);
+
+  // Plant dropdown — driven by getActivePlants which is already role-aware on the backend.
+  const unitOptions = useMemo(
+    () => activePlants.map((p) => ({ label: p.plantName, value: p.plantName })),
+    [activePlants],
   );
 
-  // Check authentication and fetch sales
+  const [modalOpen, setModalOpen]   = useState(false);
+  const [editing, setEditing]       = useState<Sale | null>(null);
+  const [form, setForm]             = useState<SaleForm>(emptyForm);
+  const [formErrors, setFormErrors] = useState<Partial<Record<keyof SaleForm | 'items', string>>>({});
+  const [saving, setSaving]         = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; ids: number[] }>({
+    open: false,
+    ids: [],
+  });
+
+  // ── Auth ──────────────────────────────────────────────────────────────────
+
+  const handleAuthError = useCallback(
+    (err: ApiError | Error): boolean => {
+      if (toApiError(err).response?.status === 401) {
+        logout();
+        toast.error('Session expired. Please sign in again.');
+        navigate('/login', { replace: true });
+        return true;
+      }
+      return false;
+    },
+    [navigate, toast],
+  );
+
+  // ── Fetch ─────────────────────────────────────────────────────────────────
+
+  const fetchSales = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res: CommonResponse = await salesService.getAllSales(buildAuthConfig());
+      if (res?.status && res.errorCode === 200) {
+        const envelope = res.data as ResponsePayloadRecord | null;
+        const nested   = (envelope?.['data'] ?? envelope) ?? null;
+        setSales(Array.isArray(nested) ? (nested as unknown as Sale[]) : []);
+      } else {
+        throw new Error(res?.internalMessage || 'Failed to load sales');
+      }
+    } catch (err) {
+      const e = err as ApiError | Error;
+      if (!handleAuthError(e)) toast.error(toApiError(e).message || 'Failed to load sales');
+    } finally {
+      setLoading(false);
+    }
+  }, [salesService, toast, handleAuthError]);
+
+  const fetchTypes = useCallback(async () => {
+    try {
+      const [typesRes, plantsRes] = await Promise.all([
+        iceTypeService.getAllIceTypes(buildAuthConfig()),
+        plantService.getActivePlants(buildAuthConfig()),
+      ]);
+
+      if (typesRes?.status) {
+        const envelope = typesRes.data as ResponsePayloadRecord | null;
+        const raw      = (envelope?.['data'] ?? envelope) ?? [];
+        setApiTypes(Array.isArray(raw) ? (raw as unknown as IceTypeDto[]) : []);
+      }
+
+      if (plantsRes?.status) {
+        const envelope = plantsRes.data as ResponsePayloadRecord | null;
+        const raw      = (envelope?.['data'] ?? envelope) ?? [];
+        setActivePlants(Array.isArray(raw) ? (raw as unknown as PlantDto[]) : []);
+      }
+    } catch {
+      // Silently fall back.
+    }
+  }, [iceTypeService, plantService]);
+
   useEffect(() => {
-    const accessToken = Cookies.get('accessToken');
-    if (!accessToken) {
-      navigate('/login', { replace: true });
-      return;
-    }
+    fetchSales();
+    fetchTypes();
+  }, [fetchSales, fetchTypes]);
 
-    const jsrole = Cookies.get('userRole')?.toUpperCase();
-    setRole(jsrole || 'USER');
-    debouncedFetchSales(accessToken);
+  // ── Table filter ──────────────────────────────────────────────────────────
 
-    return () => {
-      debouncedFetchSales.cancel();
-    };
-  }, [debouncedFetchSales, navigate]);
+  // Backend already returns only accessible sales — just apply the text filter here.
+  const filteredSales = useMemo(() => {
+    if (!query.trim()) return sales;
+    const q = query.trim().toLowerCase();
+    return sales.filter(
+      (s) =>
+        String(s.id).includes(q)            ||
+        s.name?.toLowerCase().includes(q)   ||
+        s.mobile?.toLowerCase().includes(q) ||
+        s.shop?.toLowerCase().includes(q)   ||
+        s.unit?.toLowerCase().includes(q)   ||
+        s.soldBy?.toLowerCase().includes(q),
+    );
+  }, [sales, query]);
 
-  const toggleSidebar = useCallback(() => {
-    setIsSidebarOpen(prev => !prev);
-  }, []);
 
-  const calculateTotal = useCallback((cans: number, blocks: number, pieces: number, discount: number = 0) => {
-    const pricePerCan = 240;
-    const pricePerBlock = 80;
-    const pricePerPiece = 20;
-    const subtotal = cans * pricePerCan + blocks * pricePerBlock + pieces * pricePerPiece;
-    return subtotal - discount;
-  }, []);
+  // ── Modal helpers ─────────────────────────────────────────────────────────
 
-  const calculateTotalCans = useCallback((cans: number, blocks: number, pieces: number) => {
-    return cans + blocks / 3 + pieces / 12;
-  }, []);
+  const openAdd = () => {
+    setEditing(null);
+    setForm(emptyForm());
+    setFormErrors({});
+    setModalOpen(true);
+  };
 
-  const handleAdd = useCallback(() => {
-    setCurrentSale(null);
-    form.resetFields();
-    form.setFieldsValue({
-      time: moment(),
-      date: moment(),
-      discount: 0,
-      unit: undefined,
-      name: undefined,
-      mobile: undefined,
-      shop: undefined,
-      cans: undefined,
-      blocks: undefined,
-      pieces: undefined,
-      soldBy: undefined,
-    });
-    setModalVisible(true);
-  }, [form]);
-
-  const handleLogout = useCallback(() => {
-    Cookies.remove('accessToken');
-    Cookies.remove('userRole');
-    navigate('/login');
-  }, [navigate]);
-
-  const menu = useMemo(
-    () => (
-      <Menu>
-        <Menu.Item key="logout" onClick={handleLogout} icon={<LogoutOutlined />}>
-          Logout
-        </Menu.Item>
-      </Menu>
-    ),
-    [handleLogout]
-  );
-
-  const handleEdit = useCallback(
-    (sale: Sale) => {
-      console.log('Editing sale with ID:', sale.id); // Debug log
-      setCurrentSale(sale);
-      form.setFieldsValue({
-        ...sale,
-        date: moment(sale.date, 'YYYY-MM-DD', true).isValid() ? moment(sale.date, 'YYYY-MM-DD') : moment(),
-        time: moment(sale.time, 'HH:mm', true).isValid() ? moment(sale.time, 'HH:mm') : moment(),
-        unit: sale.unit,
-      });
-      setModalVisible(true);
-    },
-    [form]
-  );
-
-  // Single sale deletion
-  const handleDelete = useCallback(
-    (id: number) => {
-      console.log('handleDelete called with ID:', id); // Debug log
-      Modal.confirm({
-        title: 'Are you sure you want to delete this sale?',
-        onOk: async () => {
-          try {
-            setLoading(true);
-            const accessToken = Cookies.get('accessToken');
-            if (!accessToken) {
-              throw new Error('No access token found');
-            }
-            const config = {
-              headers: {
-                Authorization: `Bearer ${accessToken}`,
-                'Content-Type': 'application/json',
-              },
-            };
-
-            const response: CommonResponse = await salesService.deleteSale(id, config);
-
-            if (response.status && response.errorCode === 200) {
-              setSales(prev => prev.filter(sale => sale.id !== id));
-              Modal.success({
-                title: 'Success',
-                content: response.internalMessage || 'Sale deleted successfully',
-              });
-            } else {
-              throw new Error(response.internalMessage || 'Failed to delete sale');
-            }
-          } catch (error: any) {
-            console.error('Error deleting sale:', error);
-            const errorMessage =
-              error.response?.data?.internalMessage ||
-              error.message ||
-              'An error occurred while deleting the sale';
-
-            if (error.response?.status === 401) {
-              Cookies.remove('accessToken');
-              Cookies.remove('userRole');
-              Modal.error({
-                title: 'Session Expired',
-                content: 'Your session has expired. Please log in again.',
-                onOk: () => navigate('/login', { replace: true }),
-              });
-            } else {
-              Modal.error({
-                title: 'Error',
-                content: errorMessage,
-              });
-            }
-          } finally {
-            setLoading(false);
-          }
-        },
-        onCancel: () => {
-          console.log('Delete cancelled');
-        },
-      });
-    },
-    [navigate, salesService]
-  );
-
-  // Bulk sale deletion
-  const handleBulkDelete = useCallback(() => {
-    console.log('handleBulkDelete called with selectedRowKeys:', selectedRowKeys); // Debug log
-    if (selectedRowKeys.length === 0) {
-      Modal.warning({
-        title: 'No sales selected',
-        content: 'Please select at least one sale to delete.',
-      });
-      return;
-    }
-    Modal.confirm({
-      title: `Are you sure you want to delete ${selectedRowKeys.length} selected sales?`,
-      onOk: async () => {
-        try {
-          setLoading(true);
-          const accessToken = Cookies.get('accessToken');
-          if (!accessToken) {
-            throw new Error('No access token found');
-          }
-          const config = {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-            },
-          };
-
-          const ids = selectedRowKeys.map(id => Number(id));
-          const response: CommonResponse = await salesService.deleteMultiple(ids, config);
-
-          if (response.status && response.errorCode === 200) {
-            setSales(prev => prev.filter(sale => !selectedRowKeys.includes(sale.id)));
-            setSelectedRowKeys([]);
-            Modal.success({
-              title: 'Success',
-              content: response.internalMessage || 'Selected sales deleted successfully',
-            });
-          } else {
-            throw new Error(response.internalMessage || 'Failed to delete selected sales');
-          }
-        } catch (error: any) {
-          console.error('Error bulk deleting sales:', error);
-          const errorMessage =
-            error.response?.data?.internalMessage ||
-            error.message ||
-            'An error occurred while deleting sales';
-
-          if (error.response?.status === 401) {
-            Cookies.remove('accessToken');
-            Cookies.remove('userRole');
-            Modal.error({
-              title: 'Session Expired',
-              content: 'Your session has expired. Please log in again.',
-              onOk: () => navigate('/login', { replace: true }),
-            });
-          } else {
-            Modal.error({
-              title: 'Error',
-              content: errorMessage,
-            });
-          }
-        } finally {
-          setLoading(false);
-        }
-      },
-      onCancel: () => {
-        console.log('Bulk delete cancelled');
-      },
-    });
-  }, [selectedRowKeys, navigate, salesService]);
-
-  const handleSubmit = useCallback(
-    async () => {
-      try {
-        const values = await form.validateFields();
-        setLoading(true);
-
-        // Build auth config once
-        const accessToken = Cookies.get('accessToken');
-        if (!accessToken) throw new Error('No access token found');
-        const config = {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-        };
-
-        // Shared base payload (including computed fields)
-        const baseData = {
-          date: values.date.format('YYYY-MM-DD'),
-          time: values.time.format('HH:mm'),
-          unit: values.unit,
-          name: values.name,
-          mobile: values.mobile,
-          shop: values.shop,
-          cans: Number(values.cans),
-          blocks: Number(values.blocks),
-          pieces: Number(values.pieces),
-          discount: Number(values.discount),
-          totalAmount: calculateTotal(values.cans, values.blocks, values.pieces, values.discount),
-          totalCans: calculateTotalCans(values.cans, values.blocks, values.pieces),
-          soldBy: values.soldBy,
-        };
-
-        let response: CommonResponse;
-
-        if (currentSale) {
-          // —————— UPDATE FLOW ——————
-
-          // Remove computed fields before sending
-          const { totalAmount, totalCans, ...updatePayload } = baseData;
-          console.debug('Updating sale (sans computed fields):', currentSale.id, updatePayload);
-
-          response = await salesService.updateSale(
-            currentSale.id,
-            updatePayload as SaleUpdateDto,
-            config,
-          );
-          console.debug('Update response:', response);
-
-          // Unwrap nested data
-          const level1 = response.data?.data;
-          const inner = level1?.data ?? level1;
-
-          if (!response.status || response.errorCode !== 200) {
-            throw new Error(
-              level1?.internalMessage ||
-              response.internalMessage ||
-              'Failed to update sale'
-            );
-          }
-
-          const updatedSale = {
-            ...inner,
-            totalCans: Number(inner.totalCans),
-          };
-
-          // Update list and UI
-          setSales(prev =>
-            prev.map(s => (s.id === currentSale.id ? updatedSale : s))
-          );
-          Modal.success({
-            title: 'Sale Updated',
-            content: level1?.internalMessage || 'Sale updated successfully',
-          });
-
-          // Reset modal & form
-          form.resetFields();
-          setCurrentSale(null);
-          setModalVisible(false);
-        } else {
-          // —————— CREATE FLOW (unchanged) ——————
-          const createDto: CreateSaleDto = baseData;
-          console.debug('Creating sale:', createDto);
-
-          response = await salesService.createSale(createDto, config);
-          console.debug('Create response:', response);
-
-          if (response.status && response.errorCode === 201) {
-            const raw = response.data?.data ?? response.data;
-            const newSale = { ...raw, totalCans: Number(raw.totalCans) };
-            setSales(prev => [newSale, ...prev]);
-            Modal.success({
-              title: 'Sale Created',
-              content: response.internalMessage || 'Sale created successfully',
-            });
-            form.resetFields();
-            setModalVisible(false);
-            setCurrentSale(null);
-          } else {
-            throw new Error(response.internalMessage || 'Failed to create sale');
-          }
-        }
-      } catch (error: any) {
-        console.error('Error submitting sale:', error.response?.data || error);
-        Modal.error({
-          title: error.response?.status === 401 ? 'Session Expired' : 'Error',
-          content: error.response?.data?.internalMessage || error.message,
-          onOk:
-            error.response?.status === 401
-              ? () => {
-                  Cookies.remove('accessToken');
-                  Cookies.remove('userRole');
-                  navigate('/login', { replace: true });
-                }
-              : undefined,
-        });
-      } finally {
-        setLoading(false);
-      }
-    },
-    [form, currentSale, navigate, calculateTotal, calculateTotalCans, salesService]
-  );
-
-  const generatePrintContent = useCallback((records: Sale[]) => {
-    return `
-      <html>
-        <head>
-          <title>Sales Receipts</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 20px; }
-            .bill-content { max-width: 600px; margin: 20px auto; border: 1px solid #ddd; padding: 20px; page-break-after: always; }
-            .bill-content:last-child { page-break-after: auto; }
-            h2 { text-align: center; }
-            .bill-details { margin-top: 20px; }
-            .bill-details p { margin: 5px 0; }
-            .items { margin: 20px 0; }
-            .items ul { list-style: none; padding: 0; }
-            .items li { margin: 5px 0; }
-            .total { font-weight: bold; }
-            @media print {
-              .bill-content { margin: 0 auto; }
-            }
-          </style>
-        </head>
-        <body>
-          ${records
-            .map(
-              record => `
-            <div class="bill-content">
-              <h2>KP Ice Factory - Sales Receipt</h2>
-              <div class="bill-details">
-                <p><strong>Serial No:</strong> ${record.id}</p>
-                <p><strong>Date:</strong> ${record.date}</p>
-                <p><strong>Time:</strong> ${record.time}</p>
-                <p><strong>Unit:</strong> ${record.unit}</p>
-                <p><strong>Customer Name:</strong> ${record.name}</p>
-                <p><strong>Mobile:</strong> ${record.mobile}</p>
-                <p><strong>Shop Name:</strong> ${record.shop}</p>
-              </div>
-              <div class="items">
-                <h3>Items Sold:</h3>
-                <ul>
-                  <li>Cans: ${record.cans} @ 240 Rs = ${record.cans * 240} Rs</li>
-                  <li>Blocks: ${record.blocks} @ 80 Rs = ${record.blocks * 80} Rs</li>
-                  <li>Pieces: ${record.pieces} @ 20 Rs = ${record.pieces * 20} Rs</li>
-                  <li>Discount: ${record.discount} Rs</li>
-                </ul>
-              </div>
-              <p class="total"><strong>Total Cans:</strong> ${Number(record.totalCans).toFixed(2)}</p>
-              <p class="total"><strong>Total Amount:</strong> ${record.totalAmount} Rs</p>
-              <p><strong>Sold By:</strong> ${record.soldBy}</p>
-            </div>
-          `
-            )
-            .join('')}
-        </body>
-      </html>
-    `;
-  }, []);
-
-  const handlePrint = useCallback(
-    async (record: Sale) => {
-      try {
-        setLoading(true);
-        const accessToken = Cookies.get('accessToken');
-        if (!accessToken) {
-          throw new Error('No access token found');
-        }
-        const config = {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-        };
-        const response: CommonResponse = await salesService.getPrintData(record.id, config);
-        if (response.status && response.errorCode === 200) {
-          const printData = response.data && typeof response.data === 'object' && response.data.data
-            ? {
-                ...response.data.data,
-                totalCans: typeof response.data.data.totalCans === 'string'
-                  ? parseFloat(response.data.data.totalCans)
-                  : response.data.data.totalCans,
-              }
-            : response.data;
-          const printWindow = window.open('', '_blank');
-          if (printWindow) {
-            printWindow.document.write(generatePrintContent([printData]));
-            printWindow.document.close();
-            printWindow.print();
-          }
-          Modal.success({
-            title: 'Success',
-            content: response.internalMessage || 'Print data fetched successfully',
-          });
-        } else {
-          throw new Error(response.internalMessage || 'Failed to fetch print data');
-        }
-      } catch (error: any) {
-        console.error('Error printing sale:', error);
-        if (error.response?.status === 401) {
-          Cookies.remove('accessToken');
-          Cookies.remove('userRole');
-          Modal.error({
-            title: 'Session Expired',
-            content: 'Your session has expired. Please log in again.',
-            onOk: () => navigate('/login', { replace: true }),
-          });
-        } else {
-          Modal.error({
-            title: 'Error',
-            content: error.message || 'An error occurred while fetching print data',
-          });
-        }
-      } finally {
-        setLoading(false);
-      }
-    },
-    [navigate, generatePrintContent, salesService]
-  );
-
-  const handleBulkPrint = useCallback(
-    async () => {
-      const selectedRecords = sales.filter(sale => selectedRowKeys.includes(sale.id));
-      if (selectedRecords.length === 0) {
-        Modal.warning({
-          title: 'No records selected',
-          content: 'Please select at least one sale to print.',
-        });
-        return;
-      }
-      try {
-        setLoading(true);
-        const accessToken = Cookies.get('accessToken');
-        if (!accessToken) {
-          throw new Error('No access token found');
-        }
-        const config = {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-        };
-        const printPromises = selectedRecords.map(record => salesService.getPrintData(record.id, config));
-        const responses = await Promise.all(printPromises);
-        const printData = responses
-          .filter(res => res.status && res.errorCode === 200)
-          .map(res => {
-            const data = res.data && typeof res.data === 'object' && res.data.data
-              ? {
-                  ...res.data.data,
-                  totalCans: typeof res.data.data.totalCans === 'string'
-                    ? parseFloat(res.data.data.totalCans)
-                    : res.data.data.totalCans,
-                }
-              : res.data;
-            return data;
-          });
-        if (printData.length > 0) {
-          const printWindow = window.open('', '_blank');
-          if (printWindow) {
-            printWindow.document.write(generatePrintContent(printData));
-            printWindow.document.close();
-            printWindow.print();
-          }
-          Modal.success({
-            title: 'Success',
-            content: 'Print data fetched successfully',
-          });
-        } else {
-          throw new Error('Failed to fetch print data for selected sales');
-        }
-      } catch (error: any) {
-        console.error('Error bulk printing sales:', error);
-        if (error.response?.status === 401) {
-          Cookies.remove('accessToken');
-          Cookies.remove('userRole');
-          Modal.error({
-            title: 'Session Expired',
-            content: 'Your session has expired. Please log in again.',
-            onOk: () => navigate('/login', { replace: true }),
-          });
-        } else {
-          Modal.error({
-            title: 'Error',
-            content: error.message || 'An error occurred while fetching print data',
-          });
-        }
-      } finally {
-        setLoading(false);
-      }
-    },
-    [selectedRowKeys, sales, navigate, generatePrintContent, salesService]
-  );
-
-  const handleExportExcel = useCallback(() => {
-    const exportData = sales.map(sale => ({
-      'Serial No': sale.id,
-      Date: sale.date,
-      Time: sale.time,
-      Unit: sale.unit,
-      Name: sale.name,
-      Mobile: sale.mobile,
-      'Customer Shop Name': sale.shop,
-      Cans: sale.cans,
-      Blocks: sale.blocks,
-      Pieces: sale.pieces,
-      Discount: sale.discount,
-      'Total Cans': Number(sale.totalCans).toFixed(2),
-      'Total Amount': sale.totalAmount,
-      'Sold By': sale.soldBy,
+  const openEdit = (sale: Sale) => {
+    setEditing(sale);
+    // Pre-populate items from the existing sale snapshot.
+    const existingItems: EditItem[] = (sale.items ?? []).map((snap) => ({
+      iceTypeId:   snap.iceTypeId,
+      iceTypeName: snap.iceTypeName,
+      iceTypeCode: snap.iceTypeCode,
+      price:       snap.price,
+      quantity:    String(snap.quantity),
     }));
-    const ws = XLSX.utils.json_to_sheet(exportData);
+    setForm({
+      date:     sale.date    || todayISO(),
+      time:     sale.time    || nowHHMM(),
+      unit:     sale.unit    || '',
+      name:     sale.name    || '',
+      mobile:   sale.mobile  || '',
+      shop:     sale.shop    || '',
+      items:    existingItems,
+      discount: String(sale.discount ?? 0),
+      soldBy:   sale.soldBy  || '',
+    });
+    setFormErrors({});
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setEditing(null);
+    setFormErrors({});
+  };
+
+  const setField = <K extends keyof SaleForm>(key: K, value: SaleForm[K]) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+    setFormErrors((prev) => ({ ...prev, [key]: undefined }));
+  };
+
+  // When the unit changes, reload items from the master for that plant.
+  const handleUnitChange = (unit: string) => {
+    const types = getIceTypesForPlant(apiTypes, unit);
+    setForm((prev) => ({
+      ...prev,
+      unit,
+      items: buildFormItems(types),
+    }));
+    setFormErrors((prev) => ({ ...prev, unit: undefined, items: undefined }));
+  };
+
+  const setItemQty = (iceTypeId: number, value: string) => {
+    if (value !== '' && !/^\d*\.?\d*$/.test(value)) return;
+    setForm((prev) => ({
+      ...prev,
+      items: prev.items.map((i) =>
+        i.iceTypeId === iceTypeId ? { ...i, quantity: value } : i,
+      ),
+    }));
+    setFormErrors((prev) => ({ ...prev, items: undefined }));
+  };
+
+  const discountN        = Number(form.discount) || 0;
+  const previewTotalUnits  = calculateTotalUnits(form.items);
+  const previewTotalAmount = calculateTotal(form.items, discountN);
+
+  // ── Validation ────────────────────────────────────────────────────────────
+
+  const validateForm = (): boolean => {
+    const errs: typeof formErrors = {};
+    if (!form.unit)          errs.unit    = 'Unit is required';
+    if (!form.name.trim())   errs.name    = 'Name is required';
+    if (!form.shop.trim())   errs.shop    = 'Shop is required';
+    if (!form.soldBy.trim()) errs.soldBy  = 'Sold by is required';
+
+    if (!form.mobile.trim())              errs.mobile = 'Mobile is required';
+    else if (!MOBILE_RE.test(form.mobile)) errs.mobile = 'Enter a valid 10-digit Indian mobile';
+
+    if (discountN < 0) errs.discount = 'Discount must be non-negative';
+
+    const hasQty = form.items.some((i) => Number(i.quantity) > 0);
+    if (form.items.length > 0 && !hasQty) errs.items = 'Enter a quantity for at least one item';
+    setFormErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  // ── Save ──────────────────────────────────────────────────────────────────
+
+  const handleSave = async () => {
+    if (!validateForm()) return;
+    setSaving(true);
+    try {
+      const itemsPayload = form.items
+        .filter((i) => Number(i.quantity) > 0)
+        .map((i) => ({ iceTypeId: i.iceTypeId, quantity: Number(i.quantity) }));
+
+      if (editing) {
+        const updatePayload: SaleUpdateDto = {
+          date:     form.date,
+          time:     form.time,
+          unit:     form.unit,
+          name:     form.name.trim(),
+          mobile:   form.mobile.trim(),
+          shop:     form.shop.trim(),
+          soldBy:   form.soldBy.trim(),
+          discount: discountN,
+          items:    itemsPayload,
+        };
+        const res = await salesService.updateSale(editing.id, updatePayload, buildAuthConfig());
+        if (!res?.status) throw new Error(res?.internalMessage || 'Update failed');
+
+        const envelope = res.data as ResponsePayloadRecord | null;
+        const inner    = ((envelope?.['data'] as ResponsePayloadRecord)?.['data'] ?? envelope?.['data'] ?? envelope) as unknown as Sale;
+        setSales((prev) => prev.map((s) => (s.id === editing.id ? { ...s, ...inner } : s)));
+        toast.success('Sale updated');
+      } else {
+        const createPayload = {
+          date:     form.date,
+          time:     form.time,
+          unit:     form.unit,
+          name:     form.name.trim(),
+          mobile:   form.mobile.trim(),
+          shop:     form.shop.trim(),
+          soldBy:   form.soldBy.trim(),
+          discount: discountN,
+          items:    itemsPayload,
+        };
+        const res = await salesService.createSale(createPayload, buildAuthConfig());
+        if (!res?.status) throw new Error(res?.internalMessage || 'Create failed');
+
+        const envelope  = res.data as ResponsePayloadRecord | null;
+        const newSale   = (envelope?.['data'] ?? envelope) as unknown as Sale;
+        setSales((prev) => [newSale, ...prev]);
+        toast.success('Sale created');
+      }
+
+      closeModal();
+    } catch (err) {
+      const e = err as ApiError | Error;
+      if (!handleAuthError(e)) {
+        toast.error(toApiError(e).response?.data?.internalMessage || toApiError(e).message || 'Save failed');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ── Delete ────────────────────────────────────────────────────────────────
+
+  const doDelete = async (ids: number[]) => {
+    if (ids.length === 0) return;
+    setLoading(true);
+    try {
+      const res =
+        ids.length === 1
+          ? await salesService.deleteSale(ids[0], buildAuthConfig())
+          : await salesService.deleteMultiple(ids, buildAuthConfig());
+      if (!res.status || res.errorCode !== 200) throw new Error(res.internalMessage || 'Delete failed');
+      setSales((prev) => prev.filter((s) => !ids.includes(s.id)));
+      setSelectedKeys((prev) => prev.filter((k) => !ids.includes(Number(k))));
+      toast.success(ids.length === 1 ? 'Sale deleted' : `${ids.length} sales deleted`);
+    } catch (err) {
+      const e = err as ApiError | Error;
+      if (!handleAuthError(e)) toast.error(toApiError(e).message || 'Delete failed');
+    } finally {
+      setLoading(false);
+      setConfirmDelete({ open: false, ids: [] });
+    }
+  };
+
+  // ── Invoice ───────────────────────────────────────────────────────────────
+
+  const escapeHtml = (v: string | number | boolean | null | undefined): string =>
+    String(v ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+  const formatInr = (v: number): string =>
+    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(
+      Number.isFinite(v) ? v : 0,
+    );
+
+  const buildInvoice = (r: PrintRecord): string => {
+    const discount   = Number(r.discount)   || 0;
+    const totalUnits = Number(r.totalUnits) || 0;
+    const items      = (r.itemBreakdown ?? []).filter((i) => i.quantity > 0);
+    const subtotal   = items.reduce((s, i) => s + i.subtotal, 0);
+    const grandTotal = Number(r.totalAmount) || Math.max(0, subtotal - discount);
+
+    const itemsHtml = items
+      .map(
+        (item, idx) => `
+          <tr>
+            <td class="idx">${idx + 1}</td>
+            <td>${escapeHtml(item.iceTypeName)}</td>
+            <td class="num">${item.quantity}</td>
+            <td class="num">${formatInr(item.price)}</td>
+            <td class="num">${formatInr(item.subtotal)}</td>
+          </tr>`,
+      )
+      .join('');
+
+    const invoiceNo    = `NIF-${String(r.id ?? '').padStart(6, '0')}`;
+    const generatedAt  = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+
+    return `
+      <section class="invoice">
+        <header class="invoice__head">
+          <div class="invoice__brand">
+            <div class="invoice__logo">NIF</div>
+            <div>
+              <h1>Nihal Ice Factory</h1>
+              <p class="muted">Ice Manufacturing &amp; Distribution</p>
+              <p class="muted small">${escapeHtml(r.unit || 'Head Office')}</p>
+            </div>
+          </div>
+          <div class="invoice__meta">
+            <div class="invoice__badge">INVOICE</div>
+            <table>
+              <tr><th>Invoice No.</th><td>${escapeHtml(invoiceNo)}</td></tr>
+              <tr><th>Date</th><td>${escapeHtml(r.date || '')}</td></tr>
+              <tr><th>Time</th><td>${escapeHtml(r.time || '')}</td></tr>
+              <tr><th>Unit</th><td>${escapeHtml(r.unit || '')}</td></tr>
+            </table>
+          </div>
+        </header>
+
+        <div class="invoice__parties">
+          <div class="invoice__party">
+            <div class="invoice__party-title">Bill To</div>
+            <div class="invoice__party-name">${escapeHtml(r.name || '—')}</div>
+            <div class="muted">${escapeHtml(r.shop || '')}</div>
+            <div class="muted">Mobile: ${escapeHtml(r.mobile || '—')}</div>
+          </div>
+          <div class="invoice__party invoice__party--right">
+            <div class="invoice__party-title">Issued By</div>
+            <div class="invoice__party-name">${escapeHtml(r.soldBy || '—')}</div>
+            <div class="muted">Nihal Ice Factory</div>
+          </div>
+        </div>
+
+        <table class="invoice__items">
+          <thead>
+            <tr>
+              <th class="idx">#</th>
+              <th>Description</th>
+              <th class="num">Qty</th>
+              <th class="num">Rate</th>
+              <th class="num">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsHtml || '<tr><td colspan="5" class="muted center">No items</td></tr>'}
+          </tbody>
+        </table>
+
+        <div class="invoice__summary">
+          <div class="invoice__notes">
+            <div class="invoice__notes-title">Notes</div>
+            <p>Total Units: <strong>${totalUnits}</strong></p>
+            <p class="muted small">Goods once sold will not be taken back. Thank you for your business.</p>
+          </div>
+          <table class="invoice__totals">
+            <tr><th>Subtotal</th><td>${formatInr(subtotal)}</td></tr>
+            <tr><th>Discount</th><td>− ${formatInr(discount)}</td></tr>
+            <tr class="invoice__totals-grand">
+              <th>Grand Total</th><td>${formatInr(grandTotal)}</td>
+            </tr>
+          </table>
+        </div>
+
+        <footer class="invoice__foot">
+          <div class="invoice__sign">
+            <span class="invoice__sign-line"></span>
+            <span class="muted small">Authorised Signatory</span>
+          </div>
+          <div class="invoice__generated muted small">Generated ${escapeHtml(generatedAt)}</div>
+        </footer>
+      </section>`;
+  };
+
+  const generatePrintContent = (records: PrintRecord[]) => `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Nihal Ice Factory — Invoice</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; background: #f4f6fb;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        color: #0f172a; -webkit-font-smoothing: antialiased; }
+      .page { padding: 28px; }
+      .invoice { position: relative; max-width: 780px; margin: 0 auto 28px;
+        padding: 40px 44px 32px; background: #fff; border-radius: 16px;
+        border: 1px solid #e5e7eb; box-shadow: 0 6px 24px rgba(15,23,42,.06);
+        page-break-after: always; }
+      .invoice:last-child { page-break-after: auto; }
+      .invoice::before { content:''; position:absolute; left:0; right:0; top:0; height:6px;
+        border-radius:16px 16px 0 0; background:linear-gradient(90deg,#1d4ed8,#3b82f6,#60a5fa); }
+      .invoice__head { display:flex; justify-content:space-between; align-items:flex-start; gap:24px;
+        padding-bottom:22px; border-bottom:1px solid #e5e7eb; }
+      .invoice__brand { display:flex; align-items:center; gap:16px; }
+      .invoice__logo { width:56px; height:56px; border-radius:14px;
+        background:linear-gradient(135deg,#1d4ed8,#60a5fa); color:#fff; font-weight:700;
+        font-size:18px; display:flex; align-items:center; justify-content:center; }
+      .invoice__brand h1 { margin:0; font-size:22px; font-weight:700; }
+      .invoice__meta { text-align:right; min-width:240px; }
+      .invoice__badge { display:inline-block; padding:4px 12px; background:#eff6ff; color:#1d4ed8;
+        font-size:11px; font-weight:700; letter-spacing:.12em; border-radius:999px;
+        border:1px solid #bfdbfe; margin-bottom:10px; }
+      .invoice__meta table { width:100%; border-collapse:collapse; font-size:12px; }
+      .invoice__meta th { text-align:right; color:#64748b; font-weight:500; padding:3px 10px 3px 0; white-space:nowrap; }
+      .invoice__meta td { text-align:right; color:#0f172a; font-weight:600; padding:3px 0; }
+      .invoice__parties { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:24px 0 20px; }
+      .invoice__party { padding:14px 16px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:10px; }
+      .invoice__party--right { text-align:right; }
+      .invoice__party-title { font-size:10px; font-weight:700; letter-spacing:.12em;
+        text-transform:uppercase; color:#64748b; margin-bottom:6px; }
+      .invoice__party-name { font-size:15px; font-weight:600; color:#0f172a; margin-bottom:2px; }
+      .invoice__items { width:100%; border-collapse:collapse; margin-top:4px; font-size:13px; }
+      .invoice__items thead th { background:#0f172a; color:#e2e8f0; font-size:11px; font-weight:600;
+        letter-spacing:.06em; text-transform:uppercase; padding:10px 12px; text-align:left; }
+      .invoice__items thead th:first-child { border-radius:8px 0 0 8px; }
+      .invoice__items thead th:last-child { border-radius:0 8px 8px 0; }
+      .invoice__items tbody td { padding:12px; border-bottom:1px solid #eef2f7; color:#0f172a; }
+      .invoice__items tbody tr:last-child td { border-bottom:none; }
+      .invoice__items .idx { width:36px; color:#94a3b8; }
+      .invoice__items .num { text-align:right; white-space:nowrap; }
+      .invoice__items .center { text-align:center; }
+      .invoice__summary { display:grid; grid-template-columns:1fr 280px; gap:24px; margin-top:24px; }
+      .invoice__notes { font-size:12px; color:#334155; }
+      .invoice__notes-title { font-size:10px; font-weight:700; letter-spacing:.12em;
+        text-transform:uppercase; color:#64748b; margin-bottom:6px; }
+      .invoice__notes p { margin:4px 0; }
+      .invoice__totals { width:100%; border-collapse:collapse; font-size:13px; }
+      .invoice__totals th, .invoice__totals td { padding:8px 12px; }
+      .invoice__totals th { text-align:left; color:#64748b; font-weight:500; }
+      .invoice__totals td { text-align:right; color:#0f172a; font-weight:600; }
+      .invoice__totals-grand { background:linear-gradient(135deg,#1d4ed8,#3b82f6); border-radius:10px; }
+      .invoice__totals-grand th, .invoice__totals-grand td { color:#fff; font-size:15px; font-weight:700; }
+      .invoice__totals-grand th:first-child { border-radius:10px 0 0 10px; }
+      .invoice__totals-grand td:last-child { border-radius:0 10px 10px 0; }
+      .invoice__foot { display:flex; justify-content:space-between; align-items:flex-end;
+        margin-top:36px; padding-top:20px; border-top:1px dashed #e5e7eb; }
+      .invoice__sign { min-width:220px; }
+      .invoice__sign-line { display:block; width:180px; height:1px; background:#0f172a; margin-bottom:6px; }
+      .muted { color:#64748b; margin:2px 0; font-size:12px; }
+      .small { font-size:11px; }
+      .center { text-align:center; }
+      @media print {
+        html, body { background:#fff; }
+        .page { padding:0; }
+        .invoice { margin:0; border:none; box-shadow:none; border-radius:0; max-width:none; padding:24px 32px; }
+        .invoice::before { border-radius:0; }
+      }
+    </style>
+  </head>
+  <body><div class="page">${records.map((r) => buildInvoice(r)).join('')}</div></body>
+</html>`;
+
+  const openPrintPreview = (html: string) => {
+    const existing = document.getElementById('app-print-frame');
+    if (existing) existing.remove();
+    const frame = document.createElement('iframe');
+    frame.id = 'app-print-frame';
+    Object.assign(frame.style, { position: 'fixed', right: '0', bottom: '0', width: '0', height: '0', border: '0' });
+    frame.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(frame);
+    frame.onload = () => {
+      try { frame.contentWindow?.focus(); frame.contentWindow?.print(); }
+      catch { toast.error('Print was blocked by the browser'); }
+    };
+    frame.srcdoc = html;
+  };
+
+  const unwrapPrintPayload = (res: CommonResponse): PrintRecord | null => {
+    const first = res?.data as ResponsePayloadRecord | null;
+    if (!first || typeof first !== 'object') return null;
+    const nested = first['data'] as ResponsePayloadRecord | null;
+    return (nested && typeof nested === 'object' ? nested : first) as PrintRecord;
+  };
+
+  const handlePrint = async (sale: Sale) => {
+    try {
+      const res = await salesService.getPrintData(sale.id, buildAuthConfig());
+      if (!res?.status) throw new Error(res?.internalMessage || 'Failed to fetch print data');
+      const payload = unwrapPrintPayload(res);
+      if (!payload) throw new Error('Print data was empty');
+      openPrintPreview(generatePrintContent([payload]));
+    } catch (err) {
+      const e = err as ApiError | Error;
+      if (!handleAuthError(e)) toast.error(toApiError(e).message || 'Print failed');
+    }
+  };
+
+  const handleBulkPrint = async () => {
+    if (selectedKeys.length === 0) { toast.warning('Select at least one sale to print'); return; }
+    try {
+      const results = await Promise.all(
+        selectedKeys.map((k) => salesService.getPrintData(Number(k), buildAuthConfig())),
+      );
+      const records = results
+        .filter((r) => r?.status)
+        .map((r) => unwrapPrintPayload(r))
+        .filter((r): r is PrintRecord => r !== null);
+      if (records.length === 0) throw new Error('No print data available');
+      openPrintPreview(generatePrintContent(records));
+    } catch (err) {
+      const e = err as ApiError | Error;
+      if (!handleAuthError(e)) toast.error(toApiError(e).message || 'Print failed');
+    }
+  };
+
+  // ── Export ────────────────────────────────────────────────────────────────
+
+  const handleExport = () => {
+    const rows = (filteredSales.length ? filteredSales : sales).map((s) => ({
+      'Serial No':    s.id,
+      Date:           s.date,
+      Time:           s.time,
+      Unit:           s.unit,
+      Name:           s.name,
+      Mobile:         s.mobile,
+      Shop:           s.shop,
+      Items:          (s.items ?? []).map((i) => `${i.iceTypeName}×${i.quantity}`).join(', '),
+      'Total Units':  s.totalUnits,
+      Discount:       s.discount,
+      'Total Amount': s.totalAmount,
+      'Sold By':      s.soldBy,
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Sales');
     XLSX.writeFile(wb, 'sales_data.xlsx');
-  }, [sales]);
+    toast.success('Exported to Excel');
+  };
 
-  const columns: ColumnsType<Sale> = useMemo(
+  // ── Table columns ─────────────────────────────────────────────────────────
+
+  const columns: Column<Sale>[] = useMemo(
     () => [
-      { title: 'Serial No', dataIndex: 'id', key: 'id', width: '8%', align: 'center' as const },
-      { title: 'Date', dataIndex: 'date', key: 'date', width: '10%', align: 'center' as const },
-      { title: 'Time', dataIndex: 'time', key: 'time', width: '8%', align: 'center' as const },
+      { key: 'id',     title: '#',        accessor: 'id',    width: 60, align: 'center' },
+      { key: 'date',   title: 'Date',     accessor: 'date',  align: 'left'  },
+      { key: 'time',   title: 'Time',     accessor: 'time',  align: 'left'  },
+      { key: 'unit',   title: 'Unit',     accessor: 'unit',  align: 'left'  },
+      { key: 'name',   title: 'Customer', accessor: 'name',  align: 'left'  },
+      { key: 'mobile', title: 'Mobile',   accessor: 'mobile',align: 'left'  },
+      { key: 'shop',   title: 'Shop',     accessor: 'shop',  align: 'left'  },
       {
-        title: 'Unit',
-        dataIndex: 'unit',
-        key: 'unit',
-        width: '12%',
-        align: 'center' as const,
-        render: (unit: Unit) => unit,
+        key: 'items',
+        title: 'Items',
+        align: 'left',
+        render: (row) => {
+          const summary = (row.items ?? [])
+            .filter((i) => i.quantity > 0)
+            .map((i) => `${i.iceTypeName}×${i.quantity}`)
+            .join(', ');
+          return <span title={summary}>{summary || '—'}</span>;
+        },
       },
-      { title: 'Name', dataIndex: 'name', key: 'name', width: '15%', align: 'center' as const },
-      { title: 'Mobile', dataIndex: 'mobile', key: 'mobile', width: '12%', align: 'center' as const },
-      { title: 'Customer Shop Name', dataIndex: 'shop', key: 'shop', width: '15%', align: 'center' as const },
+      { key: 'totalUnits', title: 'Total Units', accessor: 'totalUnits', align: 'right' },
+      { key: 'discount',   title: 'Discount',    accessor: 'discount',   align: 'right' },
       {
-        title: 'Items Sold',
-        key: 'itemsSold',
-        children: [
-          { title: 'Cans', dataIndex: 'cans', key: 'cans', width: '8%', align: 'center' as const },
-          { title: 'Blocks', dataIndex: 'blocks', key: 'blocks', width: '8%', align: 'center' as const },
-          { title: 'Pieces', dataIndex: 'pieces', key: 'pieces', width: '8%', align: 'center' as const },
-        ],
+        key: 'totalAmount',
+        title: 'Amount',
+        align: 'right',
+        render: (r) => formatCurrency(r.totalAmount),
       },
+      { key: 'soldBy', title: 'Sold By', accessor: 'soldBy', align: 'left' },
       {
-        title: 'Total Cans',
-        dataIndex: 'totalCans',
-        key: 'totalCans',
-        width: '8%',
-        align: 'center' as const,
-        render: (value: number | string) => Number(value).toFixed(2),
-      },
-      { title: 'Discount', dataIndex: 'discount', key: 'discount', width: '8%', align: 'center' as const },
-      { title: 'Total Amount', dataIndex: 'totalAmount', key: 'totalAmount', width: '12%', align: 'center' as const },
-      { title: 'Sold By', dataIndex: 'soldBy', key: 'soldBy', width: '12%', align: 'center' as const },
-      {
-        title: 'Actions',
         key: 'actions',
-        width: '10%',
-        align: 'center' as const,
-        render: (_37: any, record: Sale, index: number) => (
-          <Space>
-            <Button
-              type="link"
-              icon={<EditOutlined />}
-              onClick={() => handleEdit(record)}
-              className="edit-btn"
-            />
-            <Button
-              type="link"
-              icon={<DeleteOutlined />}
-              onClick={() => handleDelete(record.id)}
-              className="delete-btn"
-            />
-            <Button
-              type="link"
-              icon={<PrinterOutlined />}
-              onClick={() => handlePrint(record)}
-              className="print-btn"
-            />
-          </Space>
+        title: 'Actions',
+        align: 'center',
+        width: 180,
+        render: (row) => (
+          <div className="home-page__row-actions">
+            {isAdmin && (
+              <Button size="sm" variant="secondary" onClick={() => openEdit(row)} leftIcon={<EditIcon width={13} height={13} />}>
+                Edit
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" onClick={() => handlePrint(row)} leftIcon={<PrinterIcon width={13} height={13} />}>
+              Print
+            </Button>
+            {isAdmin && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setConfirmDelete({ open: true, ids: [row.id] })}
+                leftIcon={<TrashIcon width={13} height={13} />}
+                className="home-page__row-delete"
+              >
+                Del
+              </Button>
+            )}
+          </div>
         ),
       },
     ],
-    [handleEdit, handleDelete, handlePrint]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isAdmin],
   );
 
-  const rowSelection = useMemo(
-    () => ({
-      selectedRowKeys,
-      onChange: (selectedKeys: React.Key[]) => {
-        setSelectedRowKeys(selectedKeys);
-      },
-    }),
-    [selectedRowKeys]
-  );
-
-  const containerVariants = {
-    hidden: { opacity: 0, scale: 0.95 },
-    visible: { opacity: 1, scale: 1, transition: { staggerChildren: 0.2, ease: 'easeOut', duration: 0.6 } },
-  };
-
-  const itemVariants = {
-    hidden: { y: 30, opacity: 0, scale: 0.9 },
-    visible: { y: 0, opacity: 1, scale: 1, transition: { duration: 0.6, ease: [0.6, -0.05, 0.01, 0.99] } },
-  };
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="dashboard-container">
-      <Navbar isOpen={isSidebarOpen} toggleSidebar={toggleSidebar} />
-      <div className={`main-content ${isSidebarOpen ? 'sidebar-open' : ''}`}>
-        <motion.header
-          className="header"
-          initial={{ y: -50, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.7, ease: 'easeOut' }}
-        >
-          <div className="header-left">
-            <h3>Sales Management - KP Ice Factory</h3>
-          </div>
-          <Dropdown overlay={menu} placement="bottomCenter" trigger={['hover']}>
-            <div className="user-info" style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-              <span className="user-icon">👤</span>
-              <span>{role}</span>
-            </div>
-          </Dropdown>
-        </motion.header>
-        <motion.div className="content" variants={containerVariants} initial="hidden" animate="visible">
-          <motion.div className="button-container" variants={itemVariants}>
-            <motion.button
-              className="action-button add-sale"
-              onClick={handleAdd}
-              whileHover={{ scale: 1.05, boxShadow: '0 8px 20px rgba(0, 0, 0, 0.2)' }}
-              whileTap={{ scale: 0.95 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 15 }}
-            >
+    <div className="home-page">
+      <PageHeader
+        title="Sales"
+        subtitle="Manage your factory sales records"
+        actions={
+          <>
+            <Button variant="secondary" onClick={handleExport} leftIcon={<DownloadIcon width={15} height={15} />}>
+              Export Excel
+            </Button>
+            <Button onClick={openAdd} leftIcon={<PlusIcon width={15} height={15} />}>
               Add Sale
-            </motion.button>
-            <motion.button
-              className="action-button export-excel"
-              onClick={handleExportExcel}
-              whileHover={{ scale: 1.05, boxShadow: '0 8px 20px rgba(0, 0, 0, 0.2)' }}
-              whileTap={{ scale: 0.95 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 15 }}
-            >
-              Export to Excel
-            </motion.button>
-            {selectedRowKeys.length > 0 && (
+            </Button>
+          </>
+        }
+      />
+
+      <Card
+        title={`Sales Records (${filteredSales.length})`}
+        actions={
+          <>
+            <div className="home-page__search">
+              <Input
+                placeholder="Search by name, mobile, shop…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                size="sm"
+                leftIcon={<SearchIcon width={14} height={14} />}
+              />
+            </div>
+            {selectedKeys.length > 0 && (
               <>
-                <motion.button
-                  className="action-button delete-selected"
-                  onClick={handleBulkDelete}
-                  whileHover={{ scale: 1.05, boxShadow: '0 8px 20px rgba(0, 0, 0, 0.2)' }}
-                  whileTap={{ scale: 0.95 }}
-                  transition={{ type: 'spring', stiffness: 300, damping: 15 }}
-                  style={{ background: '#ff4d4f', color: '#fff', marginLeft: '10px' }}
-                >
-                  Delete Selected ({selectedRowKeys.length})
-                </motion.button>
-                <motion.button
-                  className="action-button print-selected"
-                  onClick={handleBulkPrint}
-                  whileHover={{ scale: 1.05, boxShadow: '0 8px 20px rgba(0, 0, 0, 0.2)' }}
-                  whileTap={{ scale: 0.95 }}
-                  transition={{ type: 'spring', stiffness: 300, damping: 15 }}
-                  style={{ background: '#1890ff', color: '#fff', marginLeft: '10px' }}
-                >
-                  Print Selected ({selectedRowKeys.length})
-                </motion.button>
+                <Button size="sm" variant="secondary" onClick={handleBulkPrint} leftIcon={<PrinterIcon width={13} height={13} />}>
+                  Print ({selectedKeys.length})
+                </Button>
+                {isAdmin && (
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    onClick={() => setConfirmDelete({ open: true, ids: selectedKeys.map((k) => Number(k)) })}
+                    leftIcon={<TrashIcon width={13} height={13} />}
+                  >
+                    Delete ({selectedKeys.length})
+                  </Button>
+                )}
               </>
             )}
-          </motion.div>
-          <motion.div className="card table-card" variants={itemVariants}>
-            <h3>Sales Records</h3>
-            <Table<Sale>
-              dataSource={sales}
-              columns={columns}
-              rowKey="id"
-              className="sales-table"
-              scroll={{ x: 'max-content' }}
-              pagination={{ pageSize: 10, showSizeChanger: false }}
-              rowSelection={rowSelection}
-              loading={loading}
-            />
-          </motion.div>
-        </motion.div>
-      </div>
-      <Modal
-        title={currentSale ? 'Edit Sale' : 'Add Sale'}
-        open={modalVisible}
-        onOk={handleSubmit}
-        onCancel={() => {
-          setModalVisible(false);
-          form.resetFields();
-          setCurrentSale(null);
-        }}
-        width="90%"
-        style={{ maxWidth: '720px', margin: '24px auto' }}
-        className="sales-modal"
-        bodyStyle={{
-          backgroundColor: '#ffffff',
-          padding: '32px',
-          borderRadius: '12px',
-          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.15)',
-        }}
-        okButtonProps={{ className: 'modal-ok-btn', loading: loading }}
-        cancelButtonProps={{ className: 'modal-cancel-btn' }}
-        footer={[
-          <Button
-            key="cancel"
-            className="modal-cancel-btn"
-            onClick={() => {
-              setModalVisible(false);
-              form.resetFields();
-              setCurrentSale(null);
-            }}
-            style={{
-              borderRadius: '8px',
-              padding: '8px 20px',
-              fontWeight: 500,
-              borderColor: '#d1d5db',
-              color: '#4b5563',
-              background: '#ffffff',
-            }}
-          >
-            Cancel
-          </Button>,
-          <Button
-            key="submit"
-            type="primary"
-            className="modal-ok-btn"
-            onClick={handleSubmit}
-            loading={loading}
-            style={{
-              borderRadius: '8px',
-              padding: '8px 20px',
-              fontWeight: 500,
-              background: '#2563eb',
-              borderColor: '#2563eb',
-              color: '#ffffff',
-            }}
-          >
-            {currentSale ? 'Update' : 'Add'}
-          </Button>,
-        ]}
+          </>
+        }
+        padded={false}
       >
-        <Form form={form} layout="vertical" className="sales-form">
-          <div className="space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Form.Item
-                name="date"
-                label="Date"
-                rules={[{ required: true, message: 'Date is required' }]}
-                className="form-item"
-              >
-                <DatePicker
-                  format="YYYY-MM-DD"
-                  className="w-full"
-                  disabled
-                  style={{
-                    borderRadius: '8px',
-                    border: '1px solid #d1d5db',
-                    background: '#f0f2f5',
-                    color: '#4b5563',
-                  }}
-                />
-              </Form.Item>
-              <Form.Item
-                name="time"
-                label="Time"
-                rules={[{ required: true, message: 'Time is required' }]}
-                className="form-item"
-              >
-                <DatePicker.TimePicker
-                  format="HH:mm"
-                  className="w-full"
-                  disabled
-                  style={{
-                    borderRadius: '8px',
-                    border: '1px solid #d1d5db',
-                    background: '#f0f2f5',
-                    color: '#4b5563',
-                  }}
-                />
-              </Form.Item>
-            </div>
-            <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4" style={{ color: '#1f2937' }}>
-                Customer Information
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Form.Item
-                  name="name"
-                  label="Name"
-                  rules={[{ required: true, message: 'Please enter a name' }]}
-                  className="form-item"
-                >
-                  <Input
-                    className="w-full"
-                    style={{
-                      borderRadius: '8px',
-                      border: '1px solid #d1d5db',
-                      padding: '10px',
-                      transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
-                    }}
-                  />
-                </Form.Item>
-                <Form.Item
-                  name="mobile"
-                  label="Mobile"
-                  rules={[
-                    { required: true, message: 'Please enter a mobile number' },
-                    {
-                      pattern: /^[6-9]\d{9}$/,
-                      message: 'Please enter a valid 10-digit Indian mobile number',
-                    },
-                  ]}
-                  className="form-item"
-                >
-                  <Input
-                    className="w-full"
-                    style={{
-                      borderRadius: '8px',
-                      border: '1px solid #d1d5db',
-                      padding: '10px',
-                    }}
-                  />
-                </Form.Item>
-                <Form.Item
-                  name="shop"
-                  label="Shop"
-                  rules={[{ required: true, message: 'Please enter a shop name' }]}
-                  className="form-item"
-                >
-                  <Input
-                    className="w-full"
-                    style={{
-                      borderRadius: '8px',
-                      border: '1px solid #d1d5db',
-                      padding: '10px',
-                    }}
-                  />
-                </Form.Item>
-              </div>
-            </div>
-            <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4" style={{ color: '#1f2937' }}>
-                Sale Details
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Form.Item
-                  name="unit"
-                  label="Unit"
-                  rules={[{ required: true, message: 'Please select a unit' }]}
-                  className="form-item"
-                >
-                  <Select allowClear className="w-full" style={{ borderRadius: '8px' }}>
-                    <Select.Option value="Unit 1">Unit 1</Select.Option>
-                    <Select.Option value="Unit 2">Unit 2</Select.Option>
-                    <Select.Option value="Unit 3">Unit 3</Select.Option>
-                  </Select>
-                </Form.Item>
-                <Form.Item
-                  name="cans"
-                  label="Cans"
-                  rules={[{ required: true, message: 'Please enter number of cans' }]}
-                  className="form-item"
-                >
-                  <InputNumber min={0} className="w-full" style={{ borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                </Form.Item>
-                <Form.Item
-                  name="blocks"
-                  label="Blocks"
-                  rules={[{ required: true, message: 'Please enter number of blocks' }]}
-                  className="form-item"
-                >
-                  <InputNumber min={0} className="w-full" style={{ borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                </Form.Item>
-                <Form.Item
-                  name="pieces"
-                  label="Pieces"
-                  rules={[{ required: true, message: 'Please enter number of pieces' }]}
-                  className="form-item"
-                >
-                  <InputNumber min={0} className="w-full" style={{ borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                </Form.Item>
-                <Form.Item
-                  name="discount"
-                  label="Discount"
-                  rules={[{ required: true, message: 'Please enter discount amount' }]}
-                  className="form-item"
-                >
-                  <InputNumber min={0} className="w-full" style={{ borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                </Form.Item>
-                <Form.Item label="Total Cans" shouldUpdate className="form-item">
-                  {() => (
-                    <span className="text-base font-medium" style={{ color: '#10b981' }}>
-                      {calculateTotalCans(
-                        form.getFieldValue('cans') || 0,
-                        form.getFieldValue('blocks') || 0,
-                        form.getFieldValue('pieces') || 0
-                      ).toFixed(2)}
-                    </span>
-                  )}
-                </Form.Item>
-                <Form.Item label="Total Amount" shouldUpdate className="form-item">
-                  {() => (
-                    <span className="text-base font-medium" style={{ color: '#2563eb' }}>
-                      {calculateTotal(
-                        form.getFieldValue('cans') || 0,
-                        form.getFieldValue('blocks') || 0,
-                        form.getFieldValue('pieces') || 0,
-                        form.getFieldValue('discount') || 0
-                      )} Rs
-                    </span>
-                  )}
-                </Form.Item>
-              </div>
-            </div>
-            <Form.Item
-              name="soldBy"
-              label="Sold By"
-              rules={[{ required: true, message: 'Please enter sold by' }]}
-              className="form-item"
-            >
-              <Input
-                className="w-full"
-                style={{ borderRadius: '8px', border: '1px solid #d1d5db', padding: '10px' }}
-              />
-            </Form.Item>
+        {!isAdmin && !loading && sales.length === 0 ? (
+          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4, marginBottom: '0.75rem' }}>
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            <p style={{ fontWeight: 600, marginBottom: '0.25rem' }}>No sales found</p>
+            <p style={{ fontSize: '0.83rem' }}>You may not be assigned to any plant yet — ask your administrator.</p>
           </div>
-        </Form>
+        ) : (
+          <DataTable<Sale>
+            data={filteredSales}
+            columns={columns}
+            rowKey={(r) => r.id}
+            loading={loading}
+            selectable
+            selectedKeys={selectedKeys}
+            onSelectionChange={setSelectedKeys}
+            pageSize={10}
+          />
+        )}
+      </Card>
+
+      {/* Add / Edit Modal */}
+      <Modal
+        open={modalOpen}
+        onClose={closeModal}
+        size="lg"
+        title={editing ? 'Edit Sale' : 'Add Sale'}
+        footer={
+          <>
+            <Button variant="secondary" onClick={closeModal}>Cancel</Button>
+            <Button onClick={handleSave} loading={saving}>{editing ? 'Update' : 'Create'}</Button>
+          </>
+        }
+      >
+        <div className="home-form">
+          <div className="home-form__row home-form__row--2">
+            <Field label="Date" required>
+              <Input type="date" value={form.date} onChange={(e) => setField('date', e.target.value)} leftIcon={<CalendarIcon width={15} height={15} />} />
+            </Field>
+            <Field label="Time" required>
+              <Input type="time" value={form.time} onChange={(e) => setField('time', e.target.value)} leftIcon={<ClockIcon width={15} height={15} />} />
+            </Field>
+          </div>
+
+          <div className="home-form__section">
+            <h4 className="home-form__section-title">Customer Information</h4>
+            <div className="home-form__row home-form__row--3">
+              <Field label="Name" required error={formErrors.name}>
+                <Input value={form.name} onChange={(e) => setField('name', e.target.value)} invalid={!!formErrors.name} leftIcon={<PersonIcon width={15} height={15} />} />
+              </Field>
+              <Field label="Mobile" required error={formErrors.mobile}>
+                <Input value={form.mobile} onChange={(e) => setField('mobile', e.target.value)} invalid={!!formErrors.mobile} inputMode="numeric" maxLength={10} leftIcon={<PhoneIcon width={15} height={15} />} />
+              </Field>
+              <Field label="Shop" required error={formErrors.shop}>
+                <Input value={form.shop} onChange={(e) => setField('shop', e.target.value)} invalid={!!formErrors.shop} leftIcon={<StoreIcon width={15} height={15} />} />
+              </Field>
+            </div>
+          </div>
+
+          <div className="home-form__section">
+            <h4 className="home-form__section-title">Sale Details</h4>
+            <div className="home-form__row home-form__row--3">
+              {/* Plant selector */}
+              <Field label="Unit" required error={formErrors.unit}>
+                <Select
+                  value={form.unit}
+                  onChange={(e) => handleUnitChange(e.target.value)}
+                  options={unitOptions}
+                  placeholder={unitOptions.length === 0 ? 'No plants in master' : 'Select plant'}
+                  invalid={!!formErrors.unit}
+                />
+              </Field>
+
+              {/* Dynamic item inputs */}
+              {form.items.map((item) => (
+                <Field key={item.iceTypeId} label={`${item.iceTypeName} (₹${item.price})`}>
+                  <Input
+                    value={item.quantity}
+                    onChange={(e) => setItemQty(item.iceTypeId, e.target.value)}
+                    inputMode="numeric"
+                    placeholder="0"
+                  />
+                </Field>
+              ))}
+
+              {/* Discount */}
+              <Field label="Discount (₹)" error={formErrors.discount}>
+                <Input
+                  value={form.discount}
+                  onChange={(e) => { if (e.target.value === '' || /^\d*\.?\d*$/.test(e.target.value)) setField('discount', e.target.value); }}
+                  inputMode="numeric"
+                />
+              </Field>
+
+              <Field label="Sold By" required error={formErrors.soldBy}>
+                <Input value={form.soldBy} onChange={(e) => setField('soldBy', e.target.value)} invalid={!!formErrors.soldBy} />
+              </Field>
+            </div>
+            {formErrors.items && (
+              <p style={{ color: 'var(--color-error)', fontSize: '0.85rem', marginTop: '0.5rem' }}>{formErrors.items}</p>
+            )}
+          </div>
+
+          {/* Live totals preview */}
+          <div className="home-form__preview">
+            <div className="home-form__preview-item">
+              <span className="home-form__preview-label">Total Units</span>
+              <span className="home-form__preview-value home-form__preview-value--green">
+                {previewTotalUnits}
+              </span>
+            </div>
+            <div className="home-form__preview-item">
+              <span className="home-form__preview-label">Total Amount</span>
+              <span className="home-form__preview-value home-form__preview-value--blue">
+                {formatCurrency(previewTotalAmount)}
+              </span>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete confirm */}
+      <Modal
+        open={confirmDelete.open}
+        onClose={() => setConfirmDelete({ open: false, ids: [] })}
+        size="sm"
+        title="Confirm Delete"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmDelete({ open: false, ids: [] })}>Cancel</Button>
+            <Button variant="danger" onClick={() => doDelete(confirmDelete.ids)}>Delete</Button>
+          </>
+        }
+      >
+        <p>
+          Are you sure you want to delete{' '}
+          <strong>{confirmDelete.ids.length} sale{confirmDelete.ids.length === 1 ? '' : 's'}</strong>?
+          This cannot be undone.
+        </p>
       </Modal>
     </div>
   );
 };
 
-export default React.memo(Home);
+export default Home;

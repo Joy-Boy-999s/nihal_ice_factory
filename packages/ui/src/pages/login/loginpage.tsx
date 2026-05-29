@@ -1,375 +1,328 @@
 import React, { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Button, Form, Input, Typography, Modal } from 'antd';
-import { LockOutlined, UserOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import Cookies from 'js-cookie';
 import { UserHelpService } from '@nihal-ice-factory/shared-services';
-import { CreateUserModel, UserLoginModel, UserRole, CommonResponse, ResetPassowordModel } from '@nihal-ice-factory/shared-models';
+import {
+  CreateUserModel,
+  UserLoginModel,
+  UserRole,
+  CommonResponse,
+  ResetPassowordModel,
+} from '@nihal-ice-factory/shared-models';
+import { Button, Field, Input, Modal, useToast } from '../../components';
+import { login, isAuthenticated, isAdmin } from '../../lib/auth';
+import { SnowflakeIcon, MailIcon, LockIcon, UserIcon } from '../../layout/nav-icons';
 import './login.css';
 
-const { Title, Text } = Typography;
+// ── Typed shape of what the login endpoint returns inside `data` ──────────
+interface LoginPayload {
+  accessToken: string;
+  user: { role: string };
+}
 
-interface Credentials {
+/** Minimal typed shape for network / API errors in catch blocks. */
+interface CatchError {
+  message?: string;
+}
+
+type Mode = 'login' | 'register';
+type ForgotStep = 'email' | 'otp' | 'reset';
+
+const PASSWORD_RE =
+  /^(?=(.*[a-z]){2,})(?=(.*[A-Z]){1,})(?=(.*\d){1,})(?=(.*[@$!%*?&#_+\-/]){2,})[A-Za-z\d@$!%*?&#_+\-/]{8,}$/;
+
+interface FormState {
   email: string;
+  username: string;
   password: string;
-  username?: string;
 }
 
-interface ForgotPasswordData {
-  email: string;
-  otp: string;
-  newPassword: string;
+interface FormErrors {
+  email?: string;
+  username?: string;
+  password?: string;
 }
+
+const initialForm: FormState = { email: '', username: '', password: '' };
 
 const LoginPage: React.FC = () => {
-  const [isLoading, setIsLoading] = useState(false);
-  const [isRegisterMode, setIsRegisterMode] = useState(false);
-  const [isForgotPasswordModal, setIsForgotPasswordModal] = useState(false);
-  const [forgotPasswordStep, setForgotPasswordStep] = useState<'email' | 'otp' | 'reset'>('email');
-  const [form] = Form.useForm<Credentials>();
-  const [forgotPasswordForm] = Form.useForm<ForgotPasswordData>();
-  const userService = new UserHelpService();
   const navigate = useNavigate();
+  const toast = useToast();
+  const [mode, setMode] = useState<Mode>('login');
+  const [form, setForm] = useState<FormState>(initialForm);
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [loading, setLoading] = useState(false);
+
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotStep, setForgotStep] = useState<ForgotStep>('email');
+  const [forgotForm, setForgotForm] = useState({ email: '', otp: '', newPassword: '' });
+  const [forgotError, setForgotError] = useState<string | null>(null);
+
+  const [userService] = useState(() => new UserHelpService());
 
   useEffect(() => {
-    const accessToken = Cookies.get('accessToken');
-    const role = Cookies.get('userRole')?.toUpperCase();
-    if (accessToken) {
-      if (role === UserRole.ADMIN) {
-        navigate('/dashboard', { replace: true });
-      } else {
-        navigate('/', { replace: true });
-      }
+    if (isAuthenticated()) {
+      navigate(isAdmin() ? '/dashboard' : '/', { replace: true });
     }
   }, [navigate]);
 
-  const handleSubmit = async (values: Credentials) => {
-    setIsLoading(true);
+  const setField = (key: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm((f) => ({ ...f, [key]: e.target.value }));
+    setErrors((err) => ({ ...err, [key]: undefined }));
+  };
+
+  const validate = (): boolean => {
+    const next: FormErrors = {};
+    if (!form.email) next.email = 'Email is required';
+    else if (!/^\S+@\S+\.\S+$/.test(form.email)) next.email = 'Enter a valid email';
+    if (!form.password) next.password = 'Password is required';
+    else if (mode === 'register' && !PASSWORD_RE.test(form.password)) {
+      next.password =
+        'Min 8 chars incl. 2 lowercase, 1 uppercase, 1 digit, 2 symbols';
+    }
+    if (mode === 'register' && !form.username) next.username = 'Username is required';
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validate()) return;
+    setLoading(true);
     try {
-      if (isRegisterMode) {
-        const requestModel: CreateUserModel = {
-          email: values.email,
-          password: values.password,
-          username: values.username!,
+      if (mode === 'register') {
+        const req: CreateUserModel = {
+          email: form.email,
+          password: form.password,
+          username: form.username,
           role: UserRole.USER,
         };
-        const response: CommonResponse = await userService.createUser(requestModel);
-
-        if (response.status && response.errorCode === 201) {
-          Modal.success({
-            title: 'Registration Successful',
-            content: 'Your account has been created successfully! Please login.',
-          });
-          form.resetFields();
-          setIsRegisterMode(false);
+        const res: CommonResponse = await userService.createUser(req);
+        if (res.status && res.errorCode === 201) {
+          toast.success('Account created. Please sign in.');
+          setMode('login');
+          setForm(initialForm);
         } else {
-          throw new Error(response.internalMessage || 'Registration failed');
+          throw new Error(res.internalMessage || 'Registration failed');
         }
       } else {
-        const requestModel: UserLoginModel = {
-          email: values.email,
-          password: values.password,
-        };
-        const response: CommonResponse = await userService.loginUser(requestModel);
-
-        if (response.status && response.errorCode === 200 && response.data?.accessToken) {
-          Cookies.set('accessToken', response.data.accessToken, { expires: 7, secure: true, sameSite: 'Strict' });
-          Cookies.set('userRole', response.data.user.role, { expires: 7, secure: true, sameSite: 'Strict' });
-
-          Modal.success({
-            title: 'Login Successful',
-            content: 'You have been logged in successfully!',
-          });
-
-          form.resetFields();
-          const role = response.data.user.role.toUpperCase();
-          if (role === UserRole.ADMIN) {
-            navigate('/dashboard', { replace: true });
-          } else {
-            navigate('/', { replace: true });
-          }
+        const req: UserLoginModel = { email: form.email, password: form.password };
+        const res: CommonResponse = await userService.loginUser(req);
+        if (res.status && res.errorCode === 200) {
+          const payload = res.data as unknown as LoginPayload;
+          login(payload.accessToken, payload.user.role);
+          toast.success('Signed in successfully');
+          const role = String(payload.user.role).toUpperCase();
+          navigate(role === UserRole.ADMIN ? '/dashboard' : '/', { replace: true });
         } else {
-          throw new Error(response.internalMessage || 'Invalid credentials');
+          throw new Error(res.internalMessage || 'Invalid credentials');
         }
       }
-    } catch (error: any) {
-      Modal.error({
-        title: isRegisterMode ? 'Registration Error' : 'Login Error',
-        content: error.message || `An error occurred during ${isRegisterMode ? 'registration' : 'login'}.`,
-      });
+    } catch (err) {
+      toast.error((err as CatchError).message || 'Request failed');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const handleForgotPassword = async (values: ForgotPasswordData) => {
-    setIsLoading(true);
+  const handleForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError(null);
+    setLoading(true);
     try {
-      if (forgotPasswordStep === 'email') {
-        // In a real app, you'd call an API to send OTP
-        Modal.success({
-          title: 'OTP Sent',
-          content: 'An OTP has been sent to your email.',
-        });
-        forgotPasswordForm.setFieldsValue({ otp: '', newPassword: '' });
-        setForgotPasswordStep('otp');
-      } else if (forgotPasswordStep === 'otp') {
-        setForgotPasswordStep('reset');
+      if (forgotStep === 'email') {
+        if (!forgotForm.email) throw new Error('Email is required');
+        toast.success('OTP sent to your email');
+        setForgotStep('otp');
+      } else if (forgotStep === 'otp') {
+        if (!forgotForm.otp) throw new Error('OTP is required');
+        setForgotStep('reset');
       } else {
-        const requestModel: ResetPassowordModel = {
-          email: values.email,
-          otp: values.otp,
-          newPassword: values.newPassword,
+        if (!PASSWORD_RE.test(forgotForm.newPassword))
+          throw new Error('Password does not meet complexity requirements');
+        const req: ResetPassowordModel = {
+          email: forgotForm.email,
+          otp: forgotForm.otp,
+          newPassword: forgotForm.newPassword,
         };
-        const response: CommonResponse = await userService.resetPassword(requestModel);
-
-        if (response.status && response.errorCode === 200) {
-          Modal.success({
-            title: 'Password Reset Successful',
-            content: 'Your password has been reset successfully! Please login.',
-          });
-          forgotPasswordForm.resetFields();
-          setIsForgotPasswordModal(false);
-          setForgotPasswordStep('email');
+        const res: CommonResponse = await userService.resetPassword(req);
+        if (res.status && res.errorCode === 200) {
+          toast.success('Password reset successfully');
+          setShowForgot(false);
+          setForgotStep('email');
+          setForgotForm({ email: '', otp: '', newPassword: '' });
         } else {
-          throw new Error(response.internalMessage || 'Password reset failed');
+          throw new Error(res.internalMessage || 'Reset failed');
         }
       }
-    } catch (error: any) {
-      Modal.error({
-        title: 'Password Reset Error',
-        content: error.message || 'An error occurred while resetting your password.',
-      });
+    } catch (err) {
+      setForgotError((err as CatchError).message || 'Reset failed');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  };
-
-  const toggleMode = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsRegisterMode(!isRegisterMode);
-    form.resetFields();
-  };
-
-  const openForgotPasswordModal = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsForgotPasswordModal(true);
-    forgotPasswordForm.resetFields();
-    setForgotPasswordStep('email');
   };
 
   return (
-    <motion.div
-      className="login-container"
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      transition={{ duration: 0.4 }}
-    >
-      <motion.div variants={containerVariants} initial="hidden" animate="visible" className="form-container">
-        <motion.div variants={childVariants} style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <Title level={3} className="title">
-            {isRegisterMode ? 'Create Account' : 'Welcome Back'}
-          </Title>
-          <Text className="subtitle">
-            {isRegisterMode ? 'Sign up to get started' : 'Sign in to continue'}
-          </Text>
-        </motion.div>
+    <div className="login-page">
+      <div className="login-page__panel">
+        <div className="login-page__brand">
+          <div className="login-page__brand-logo">
+            <SnowflakeIcon width={26} height={26} />
+          </div>
+          <div>
+            <h1 className="login-page__brand-title">Nihal Ice Factory</h1>
+            <p className="login-page__brand-subtitle">ERP Operations Suite</p>
+          </div>
+        </div>
 
-        <Form form={form} onFinish={handleSubmit} layout="vertical" className="form">
-          <motion.div variants={childVariants}>
-            <Form.Item
-              name="email"
-              rules={[
-                { required: true, message: 'Please input your email!' },
-                { type: 'email', message: 'Please enter a valid email!' },
-              ]}
-            >
-              <motion.div variants={inputVariants} whileFocus="focus" className="input-container">
-                <Input prefix={<UserOutlined />} placeholder="Email address" size="large" />
-              </motion.div>
-            </Form.Item>
-          </motion.div>
+        <h2 className="login-page__title">
+          {mode === 'register' ? 'Create your account' : 'Welcome back'}
+        </h2>
+        <p className="login-page__subtitle">
+          {mode === 'register'
+            ? 'Sign up to access the factory dashboard.'
+            : 'Sign in to continue to your workspace.'}
+        </p>
 
-          {isRegisterMode && (
-            <motion.div variants={childVariants}>
-              <Form.Item
-                name="username"
-                rules={[{ required: true, message: 'Please input your username!' }]}
+        <form className="login-page__form" onSubmit={handleSubmit} noValidate>
+          <Field label="Email" error={errors.email} required>
+            <Input
+              type="email"
+              value={form.email}
+              onChange={setField('email')}
+              placeholder="you@example.com"
+              invalid={!!errors.email}
+              autoComplete="email"
+              leftIcon={<MailIcon width={16} height={16} />}
+            />
+          </Field>
+
+          {mode === 'register' && (
+            <Field label="Username" error={errors.username} required>
+              <Input
+                value={form.username}
+                onChange={setField('username')}
+                placeholder="yourname"
+                invalid={!!errors.username}
+                autoComplete="username"
+                leftIcon={<UserIcon width={16} height={16} />}
+              />
+            </Field>
+          )}
+
+          <Field label="Password" error={errors.password} required>
+            <Input
+              type="password"
+              value={form.password}
+              onChange={setField('password')}
+              placeholder="••••••••"
+              invalid={!!errors.password}
+              autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+              leftIcon={<LockIcon width={16} height={16} />}
+            />
+          </Field>
+
+          {mode === 'login' && (
+            <div className="login-page__forgot">
+              <button
+                type="button"
+                className="login-page__link"
+                onClick={() => {
+                  setShowForgot(true);
+                  setForgotStep('email');
+                  setForgotForm({ email: '', otp: '', newPassword: '' });
+                  setForgotError(null);
+                }}
               >
-                <motion.div variants={inputVariants} whileFocus="focus" className="input-container">
-                  <Input prefix={<UserOutlined />} placeholder="Username" size="large" />
-                </motion.div>
-              </Form.Item>
-            </motion.div>
-          )}
-
-          <motion.div variants={childVariants}>
-            <Form.Item
-              name="password"
-              rules={[
-                { required: true, message: 'Please input your password!' },
-                ...(isRegisterMode
-                  ? [
-                      {
-                        pattern: /^(?=(.*[a-z]){2,})(?=(.*[A-Z]){1,})(?=(.*\d){1,})(?=(.*[@$!%*?&#_+\-/]){2,})[A-Za-z\d@$!%*?&#_+\-/]{8,}$/,
-                        message: 'Password must meet complexity requirements!',
-                      },
-                    ]
-                  : []),
-              ]}
-            >
-              <motion.div variants={inputVariants} whileFocus="focus" className="input-container">
-                <Input.Password prefix={<LockOutlined />} placeholder="Password" size="large" />
-              </motion.div>
-            </Form.Item>
-          </motion.div>
-
-          {!isRegisterMode && (
-            <motion.div
-              variants={childVariants}
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-            >
-              <a href="#" className="forgot-password" onClick={openForgotPasswordModal}>
                 Forgot password?
-              </a>
-            </motion.div>
+              </button>
+            </div>
           )}
 
-          <motion.div variants={childVariants}>
-            <Form.Item>
-              <motion.div variants={buttonVariants} whileHover="hover" whileTap="tap">
-                <Button
-                  type="primary"
-                  htmlType="submit"
-                  size="large"
-                  loading={isLoading}
-                  disabled={isLoading}
-                  block
-                  className="submit-button"
-                >
-                  <AnimatePresence mode="wait">
-                    <motion.span
-                      key={isLoading ? 'loading' : isRegisterMode ? 'register' : 'sign-in'}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      {isLoading
-                        ? isRegisterMode
-                          ? 'Registering...'
-                          : 'Signing in...'
-                        : isRegisterMode
-                        ? 'Register'
-                        : 'Sign In'}
-                    </motion.span>
-                  </AnimatePresence>
-                </Button>
-              </motion.div>
-            </Form.Item>
-          </motion.div>
-        </Form>
+          <Button type="submit" size="lg" block loading={loading}>
+            {mode === 'register' ? 'Create account' : 'Sign in'}
+          </Button>
+        </form>
 
-        <motion.div variants={childVariants} style={{ textAlign: 'center', marginTop: '16px' }}>
-          <Text>
-            {isRegisterMode ? 'Already have an account?' : "Don't have an account?"}{' '}
-            <Button type="link" onClick={toggleMode} style={{ padding: 0 }}>
-              {isRegisterMode ? 'Sign In' : 'Sign Up'}
-            </Button>
-          </Text>
-        </motion.div>
-      </motion.div>
+        <p className="login-page__switch">
+          {mode === 'register' ? 'Already have an account?' : "Don't have an account?"}{' '}
+          <button
+            type="button"
+            className="login-page__link"
+            onClick={() => {
+              setMode(mode === 'register' ? 'login' : 'register');
+              setErrors({});
+              setForm(initialForm);
+            }}
+          >
+            {mode === 'register' ? 'Sign in' : 'Sign up'}
+          </button>
+        </p>
+      </div>
 
-      {/* Forgot Password Modal */}
       <Modal
-        title={forgotPasswordStep === 'email' ? 'Forgot Password' : forgotPasswordStep === 'otp' ? 'Enter OTP' : 'Reset Password'}
-        open={isForgotPasswordModal}
-        onCancel={() => {
-          setIsForgotPasswordModal(false);
-          setForgotPasswordStep('email');
-          forgotPasswordForm.resetFields();
-        }}
-        footer={null}
-      >
-        <Form form={forgotPasswordForm} onFinish={handleForgotPassword} layout="vertical">
-          {forgotPasswordStep === 'email' && (
-            <Form.Item
-              name="email"
-              rules={[
-                { required: true, message: 'Please input your email!' },
-                { type: 'email', message: 'Please enter a valid email!' },
-              ]}
-            >
-              <Input prefix={<UserOutlined />} placeholder="Email address" size="large" />
-            </Form.Item>
-          )}
-
-          {forgotPasswordStep === 'otp' && (
-            <Form.Item
-              name="otp"
-              rules={[{ required: true, message: 'Please input the OTP!' }]}
-            >
-              <Input prefix={<LockOutlined />} placeholder="OTP" size="large" />
-            </Form.Item>
-          )}
-
-          {forgotPasswordStep === 'reset' && (
-            <Form.Item
-              name="newPassword"
-              rules={[
-                { required: true, message: 'Please input your new password!' },
-                {
-                  pattern: /^(?=(.*[a-z]){2,})(?=(.*[A-Z]){1,})(?=(.*\d){1,})(?=(.*[@$!%*?&#_+\-/]){2,})[A-Za-z\d@$!%*?&#_+\-/]{8,}$/,
-                  message: 'Password must meet complexity requirements!',
-                },
-              ]}
-            >
-              <Input.Password prefix={<LockOutlined />} placeholder="New Password" size="large" />
-            </Form.Item>
-          )}
-
-          <Form.Item>
-            <Button
-              type="primary"
-              htmlType="submit"
-              size="large"
-              loading={isLoading}
-              disabled={isLoading}
-              block
-            >
-              {forgotPasswordStep === 'email' ? 'Send OTP' : forgotPasswordStep === 'otp' ? 'Verify OTP' : 'Reset Password'}
+        open={showForgot}
+        onClose={() => setShowForgot(false)}
+        title={
+          forgotStep === 'email'
+            ? 'Forgot password'
+            : forgotStep === 'otp'
+            ? 'Enter OTP'
+            : 'Reset password'
+        }
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowForgot(false)}>
+              Cancel
             </Button>
-          </Form.Item>
-        </Form>
+            <Button onClick={handleForgot} loading={loading}>
+              {forgotStep === 'email'
+                ? 'Send OTP'
+                : forgotStep === 'otp'
+                ? 'Verify OTP'
+                : 'Reset password'}
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={handleForgot} className="login-page__forgot-form">
+          {forgotStep === 'email' && (
+            <Field label="Email" required>
+              <Input
+                type="email"
+                value={forgotForm.email}
+                onChange={(e) =>
+                  setForgotForm((f) => ({ ...f, email: e.target.value }))
+                }
+                placeholder="you@example.com"
+              />
+            </Field>
+          )}
+          {forgotStep === 'otp' && (
+            <Field label="OTP" required>
+              <Input
+                value={forgotForm.otp}
+                onChange={(e) => setForgotForm((f) => ({ ...f, otp: e.target.value }))}
+                placeholder="6-digit code"
+              />
+            </Field>
+          )}
+          {forgotStep === 'reset' && (
+            <Field label="New password" required>
+              <Input
+                type="password"
+                value={forgotForm.newPassword}
+                onChange={(e) =>
+                  setForgotForm((f) => ({ ...f, newPassword: e.target.value }))
+                }
+                placeholder="••••••••"
+              />
+            </Field>
+          )}
+          {forgotError && <div className="login-page__form-error">{forgotError}</div>}
+        </form>
       </Modal>
-    </motion.div>
+    </div>
   );
-};
-
-// Variants (unchanged)
-const containerVariants = {
-  hidden: { opacity: 0, y: 50 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.8, ease: 'easeOut', when: 'beforeChildren', staggerChildren: 0.2 },
-  },
-};
-
-const childVariants = {
-  hidden: { opacity: 0, x: -20 },
-  visible: { opacity: 1, x: 0, transition: { duration: 0.5, ease: 'easeOut' } },
-};
-
-const buttonVariants = {
-  hover: { scale: 1.05, transition: { duration: 0.3 } },
-  tap: { scale: 0.95 },
-};
-
-const inputVariants = {
-  focus: { scale: 1.02, transition: { duration: 0.2 } },
 };
 
 export default LoginPage;

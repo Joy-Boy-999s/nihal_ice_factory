@@ -3,12 +3,15 @@ import { CacheModule } from '@nestjs/cache-manager';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
 
 import { Sale } from './entities/sale.entity';
 import { SalesController } from './sales.controller';
 import { SalesService } from './sales.service';
 import { SalesRepository } from './repository/sales.repository';
 import { GenericTransactionManager } from '../../database/trasanction-manager';
+import { IceTypeModule } from '../IcePrice/ice-price.module';
+import { PlantModule } from '../Plant/plant.module';
 
 @Module({
   imports: [
@@ -22,7 +25,10 @@ import { GenericTransactionManager } from '../../database/trasanction-manager';
         signOptions: { expiresIn: '30d' },
       }),
     }),
+    PassportModule.register({ defaultStrategy: 'jwt' }),
     CacheModule.register({ isGlobal: true, ttl: 300 }),
+    IceTypeModule,
+    PlantModule,
   ],
   controllers: [SalesController],
   providers: [SalesService, GenericTransactionManager, SalesRepository],

@@ -9,7 +9,6 @@ import { GenericTransactionManager } from '../../database/trasanction-manager';
 
 @Injectable()
 export class UserService {
-  logger: any;
   constructor(
     @InjectRepository(UserRepository)
     private readonly userRepository: UserRepository,
@@ -76,7 +75,7 @@ export class UserService {
         return new CommonResponse(false, 401, 'Invalid credentials');
       }
 
-      const payload = { username: user.username, sub: user.id };
+      const payload = { username: user.username, sub: user.id, role: user.role };
       const accessToken = this.jwtService.sign(payload, { expiresIn: '7d' });
       const refreshToken = this.jwtService.sign(payload, { expiresIn: '15d' });
 
@@ -144,6 +143,18 @@ export class UserService {
     } catch (error) {
       await this.transactionManager.rollbackTransaction();
       return new CommonResponse(false, 500, 'Error deleting user');
+    }
+  }
+
+  async getAllUsers(): Promise<CommonResponse> {
+    try {
+      const users = await this.userRepository.find({ order: { username: 'ASC' } as never });
+      // Strip sensitive fields before returning.
+      const sanitized = users.map(({ password, resetPasswordOtp, resetPasswordExpires, ...rest }) => rest);
+      return new CommonResponse(true, 200, 'Users fetched successfully', sanitized as never);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      return new CommonResponse(false, 500, errorMessage);
     }
   }
 

@@ -3,7 +3,6 @@
   "compilerOptions": {
     "outDir": "dist",
     "module": "nodenext",
-    "types": ["node"],
     "rootDir": "src",
     "moduleResolution": "nodenext",
     "tsBuildInfoFile": "dist/tsconfig.app.tsbuildinfo",
@@ -12,7 +11,11 @@
     "target": "es2021"
   },
   "include": ["src/**/*.ts"],
-  "exclude": [],
+  "exclude": [
+    "src/**/*.spec.ts",
+    "src/**/*.test.ts",
+    "jest.config.ts"
+  ],
   "references": [
     {
       "path": "../../libs/backend-utils/tsconfig.lib.json"

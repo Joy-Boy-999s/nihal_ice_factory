@@ -1,0 +1,43 @@
+.ui-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ui-field__label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: 0.01em;
+  user-select: none;
+}
+
+.ui-field__required {
+  color: var(--color-danger);
+  margin-left: 3px;
+  font-weight: 800;
+}
+
+.ui-field__control { display: flex; }
+
+.ui-field__error {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--color-danger);
+  font-weight: 600;
+  animation: field-error-slide 200ms var(--ease-standard) both;
+}
+
+@keyframes field-error-slide {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.ui-field__hint {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}

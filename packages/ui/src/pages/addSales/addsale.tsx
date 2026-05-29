@@ -1,399 +1,374 @@
-import React, { useState, useEffect, useCallback, useMemo, FC } from 'react';
-import { motion } from 'framer-motion';
-import { Form, Input, InputNumber, DatePicker, Button, Select, Menu, Dropdown, Modal } from 'antd';
-import { LogoutOutlined } from '@ant-design/icons';
-import moment from 'moment';
-import Cookies from 'js-cookie';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Navbar from '../navbar/navbar';
-import { SalesHelpService } from '@nihal-ice-factory/shared-services';
+import { SalesHelpService, IceTypeService, PlantService } from '@nihal-ice-factory/shared-services';
+import { IceTypeDto, PlantDto, ResponsePayloadRecord } from '@nihal-ice-factory/shared-models';
+import { Button, Card, Field, Input, PageHeader, Select, useToast } from '../../components';
+import { buildAuthConfig, logout } from '../../lib/auth';
+import {
+  buildFormItems,
+  calculateTotal,
+  calculateTotalUnits,
+  formatCurrency,
+  getIceTypesForPlant,
+} from '../../lib/pricing';
+import { createInitialForm } from './utils/constants';
+import { isValidNumericInput, validateSaleForm } from './utils/form-helpers';
+import { SaleForm, SaleItem } from './model/types';
+import './styles/addsale.css';
 
-interface CreateSaleDto {
-  date: string;
-  time: string;
-  unit: string;
-  name: string;
-  mobile: string;
-  shop: string;
-  cans: number;
-  blocks: number;
-  pieces: number;
-  totalCans: number;
-  discount?: number;
-  totalAmount: number;
-  soldBy: string;
+/** Typed shape for catch-block errors. */
+interface CatchError {
+  response?: { status?: number; data?: { internalMessage?: string } };
+  message?: string;
 }
 
-const AddSale: FC = () => {
-  const [form] = Form.useForm();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [role, setRole] = useState<string>('USER');
-  const [loading, setLoading] = useState<boolean>(false);
-  const navigate = useNavigate();
-  const salesService = useMemo(() => new SalesHelpService(), []);
+const SaleFormSection = lazy(() => import('./components/SaleFormSection'));
+const SaleTotalsPreview = lazy(() => import('./components/SaleTotalsPreview'));
+const SalePreviewModal = lazy(() => import('./components/SalePreviewModal'));
 
-  useEffect(() => {
-    const accessToken = Cookies.get('accessToken');
-    if (!accessToken) {
-      navigate('/login', { replace: true });
-      return;
-    }
-    const jsrole = Cookies.get('userRole')?.toUpperCase();
-    setRole(jsrole || 'USER');
-    form.setFieldsValue({
-      time: moment(),
-      date: moment(),
-      discount: 0,
-    });
-  }, [navigate, form]);
+// ── Component ────────────────────────────────────────────────────────────
 
-  const toggleSidebar = useCallback(() => {
-    setIsSidebarOpen(prev => !prev);
-  }, []);
+const AddSale: React.FC = () => {
+  const navigate    = useNavigate();
+  const toast       = useToast();
+  const salesService   = useMemo(() => new SalesHelpService(), []);
+  const iceTypeService = useMemo(() => new IceTypeService(), []);
+  const plantService   = useMemo(() => new PlantService(), []);
 
-  const calculateTotal = useCallback((cans: number, blocks: number, pieces: number, discount: number = 0) => {
-    const pricePerCan = 240;
-    const pricePerBlock = 80;
-    const pricePerPiece = 20;
-    const subtotal = cans * pricePerCan + blocks * pricePerBlock + pieces * pricePerPiece;
-    return subtotal - discount;
-  }, []);
+  const [form, setForm]       = useState<SaleForm>(createInitialForm());
+  const [errors, setErrors]   = useState<ReturnType<typeof validateSaleForm>>({});
+  const [saving, setSaving]   = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
-  const calculateTotalCans = useCallback((cans: number, blocks: number, pieces: number) => {
-    return cans + blocks / 3 + pieces / 12;
-  }, []);
+  // Full list of ice types from the master.
+  const [apiTypes, setApiTypes]           = useState<IceTypeDto[]>([]);
+  const [typesLoading, setTypesLoading]   = useState(true);
 
-  const handleSubmit = useCallback(async () => {
+  // Active plants — backend already scopes this to the user's accessible plants.
+  const [activePlants, setActivePlants] = useState<PlantDto[]>([]);
+
+  const unitOptions = useMemo(
+    () => activePlants.map((p) => ({ label: p.plantName, value: p.plantName })),
+    [activePlants],
+  );
+
+  // Active ice types for the currently selected plant.
+  const plantTypes = useMemo(
+    () => getIceTypesForPlant(apiTypes, form.unit || undefined),
+    [apiTypes, form.unit],
+  );
+
+  // Fetch ice types + active plants once on mount.
+  // getActivePlants is role-aware on the backend — users only receive their accessible plants.
+  const fetchTypes = useCallback(async () => {
+    setTypesLoading(true);
     try {
-      const values = await form.validateFields();
-      setLoading(true);
-  
-      const accessToken = Cookies.get('accessToken');
-      if (!accessToken) throw new Error('No access token found');
-  
-      const config = {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      };
-  
-      const saleData: CreateSaleDto = {
-        date: values.date.format('YYYY-MM-DD'),
-        time: values.time.format('HH:mm'),
-        unit: values.unit,
-        name: values.name,
-        mobile: values.mobile,
-        shop: values.shop,
-        cans: Number(values.cans),
-        blocks: Number(values.blocks),
-        pieces: Number(values.pieces),
-        discount: Number(values.discount),
-        totalAmount: calculateTotal(values.cans, values.blocks, values.pieces, values.discount),
-        totalCans: calculateTotalCans(values.cans, values.blocks, values.pieces),
-        soldBy: values.soldBy,
-      };
-  
-      const response = await salesService.createSale(saleData, config);
-  
-      if (response.status) {
-        Modal.success({
-          title: 'Sale Created',
-          content: response.internalMessage || 'Sale created successfully',
-          // only reset once the user closes the modal
-          onOk: () => form.resetFields(),
-        });
-      } else {
-        throw new Error(response.internalMessage || `Unexpected response code: ${response.status}`);
+      const [typesRes, plantsRes] = await Promise.all([
+        iceTypeService.getAllIceTypes(buildAuthConfig()),
+        plantService.getActivePlants(buildAuthConfig()),
+      ]);
+
+      if (typesRes?.status) {
+        const envelope = typesRes.data as ResponsePayloadRecord | null;
+        const raw = (envelope?.['data'] ?? envelope) ?? [];
+        setApiTypes(Array.isArray(raw) ? (raw as unknown as IceTypeDto[]) : []);
       }
-  
-    } catch (error: any) {
-      console.error('Error creating sale:', error);
-      if (error.response?.status === 401) {
-        Cookies.remove('accessToken');
-        Cookies.remove('userRole');
-        Modal.error({
-          title: 'Session Expired',
-          content: 'Your session has expired. Please log in again.',
-          onOk: () => navigate('/login', { replace: true }),
-        });
-      } else {
-        Modal.error({
-          title: 'Error',
-          content: error.message || 'An error occurred while creating the sale',
-        });
+
+      if (plantsRes?.status) {
+        const envelope = plantsRes.data as ResponsePayloadRecord | null;
+        const raw = (envelope?.['data'] ?? envelope) ?? [];
+        setActivePlants(Array.isArray(raw) ? (raw as unknown as PlantDto[]) : []);
       }
+    } catch {
+      // Silently fall back — UI will show guidance.
     } finally {
-      setLoading(false);
+      setTypesLoading(false);
     }
-  }, [form, calculateTotal, calculateTotalCans, navigate, salesService]);
-  
+  }, [iceTypeService, plantService]);
 
-  const handleLogout = useCallback(() => {
-    Cookies.remove('accessToken');
-    Cookies.remove('userRole');
-    navigate('/login');
-  }, [navigate]);
+  useEffect(() => { fetchTypes(); }, [fetchTypes]);
 
-  const menu = useMemo(() => (
-    <Menu>
-      <Menu.Item key="logout" onClick={handleLogout} icon={<LogoutOutlined />}>
-        Logout
-      </Menu.Item>
-    </Menu>
-  ), [handleLogout]);
-
-  const containerVariants = {
-    hidden: { opacity: 0, scale: 0.95 },
-    visible: { opacity: 1, scale: 1, transition: { staggerChildren: 0.2, ease: 'easeOut', duration: 0.6 } },
+  // When the plant changes, rebuild the items array from that plant's ice types.
+  const handleUnitChange = (unit: string) => {
+    const types = getIceTypesForPlant(apiTypes, unit);
+    setForm((prev) => ({
+      ...prev,
+      unit,
+      items: buildFormItems(types),
+    }));
+    setErrors((prev) => ({ ...prev, unit: undefined, items: undefined }));
   };
 
+  const setField = <K extends keyof SaleForm>(key: K, value: SaleForm[K]) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+    setErrors((prev) => ({ ...prev, [key]: undefined }));
+  };
+
+  // Update a single item's quantity.
+  const setItemQty = (iceTypeId: number, rawValue: string) => {
+    if (!isValidNumericInput(rawValue)) return;
+    setForm((prev) => ({
+      ...prev,
+      items: prev.items.map((item) =>
+        item.iceTypeId === iceTypeId ? { ...item, quantity: rawValue } : item,
+      ),
+    }));
+    setErrors((prev) => ({ ...prev, items: undefined }));
+  };
+
+  const discountN    = Number(form.discount) || 0;
+  const totalUnits   = calculateTotalUnits(form.items);
+  const totalAmount  = calculateTotal(form.items, discountN);
+
+  // Whether the item inputs can be interacted with.
+  const itemsDisabled = typesLoading || plantTypes.length === 0;
+
+  const validate = (): boolean => {
+    const errs = validateSaleForm(form);
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const handleReview = (e: { preventDefault(): void }) => {
+    e.preventDefault();
+    if (!validate()) return;
+    setPreviewOpen(true);
+  };
+
+  const handleBackToEdit = () => {
+    if (saving) return;
+    setPreviewOpen(false);
+  };
+
+  const handleConfirmSave = async () => {
+    setSaving(true);
+    try {
+      const payload = {
+        date:     form.date,
+        time:     form.time,
+        unit:     form.unit,
+        name:     form.name.trim(),
+        mobile:   form.mobile.trim(),
+        shop:     form.shop.trim(),
+        soldBy:   form.soldBy.trim(),
+        discount: discountN,
+        items: form.items
+          .filter((i) => Number(i.quantity) > 0)
+          .map((i) => ({ iceTypeId: i.iceTypeId, quantity: Number(i.quantity) })),
+      };
+
+      const res = await salesService.createSale(payload, buildAuthConfig());
+      if (!res?.status) throw new Error(res?.internalMessage || 'Create failed');
+
+      toast.success('Sale created');
+      setPreviewOpen(false);
+      setForm(createInitialForm());
+      setErrors({});
+    } catch (err) {
+      const e = err as CatchError;
+      if (e.response?.status === 401) {
+        logout();
+        toast.error('Session expired. Please sign in again.');
+        navigate('/login', { replace: true });
+      } else {
+        toast.error(e.response?.data?.internalMessage || e.message || 'Create failed');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ── Price hint ───────────────────────────────────────────────────────────
+  const priceHint = typesLoading
+    ? 'Loading ice types…'
+    : !form.unit
+    ? 'Select a factory plant to load ice types and prices.'
+    : plantTypes.length === 0
+    ? `No ice types configured for "${form.unit}". Please set up the Ice Type Master first.`
+    : `${plantTypes.length} ice type${plantTypes.length > 1 ? 's' : ''} loaded for ${form.unit}.`;
+
+  const canSubmit = !typesLoading && plantTypes.length > 0;
+
   return (
-    <div className="dashboard-container">
-      <Navbar isOpen={isSidebarOpen} toggleSidebar={toggleSidebar} />
-      <div className={`main-content ${isSidebarOpen ? 'sidebar-open' : ''}`}>
-        <motion.header
-          className="header"
-          initial={{ y: -50, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.7, ease: 'easeOut' }}
-        >
-          <div className="header-left">
-            <h3>Add New Sale - KP Ice Factory</h3>
-          </div>
-          <Dropdown overlay={menu} placement="bottomCenter" trigger={['hover']}>
-            <div className="user-info" style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-              <span className="user-icon">👤</span>
-              <span>{role}</span>
+    <div className="add-sale-page">
+      <PageHeader
+        title="Add Sale"
+        subtitle="Create a new invoice-ready sale record for your ERP workflow"
+        actions={
+          <Button variant="secondary" onClick={() => navigate('/')}>
+            Back to Sales
+          </Button>
+        }
+      />
+
+      <Card title="New Sale Entry">
+        <div className="add-sale-shell">
+          <p className="add-sale-shell__hint">{priceHint}</p>
+
+          <form className="add-sale-form" onSubmit={handleReview} noValidate>
+            {/* Date & Time */}
+            <div className="add-sale-grid add-sale-grid--2">
+              <Field label="Date" required>
+                <Input
+                  type="date"
+                  value={form.date}
+                  onChange={(e) => setField('date', e.target.value)}
+                />
+              </Field>
+              <Field label="Time" required>
+                <Input
+                  type="time"
+                  value={form.time}
+                  onChange={(e) => setField('time', e.target.value)}
+                />
+              </Field>
             </div>
-          </Dropdown>
-        </motion.header>
-        <motion.div className="content" variants={containerVariants} initial="hidden" animate="visible">
-          <div className="card table-card">
-            <h3>Add Sale</h3>
-            <Form form={form} layout="vertical" className="sales-form" onFinish={handleSubmit}>
-              <div className="space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <Form.Item
-                    name="date"
-                    label="Date"
-                    rules={[{ required: true, message: 'Date is required' }]}
-                    className="form-item"
-                  >
-                    <DatePicker
-                      format="YYYY-MM-DD"
-                      className="w-full"
-                      disabled
-                      style={{
-                        borderRadius: '8px',
-                        border: '1px solid #d1d5db',
-                        background: '#f0f2f5',
-                        color: '#4b5563',
-                      }}
+
+            {/* Customer */}
+            <Suspense fallback={<div className="add-sale-lazy-placeholder" aria-hidden />}>
+              <SaleFormSection
+                title="Customer Information"
+                description="Capture basic contact and shop details"
+              >
+                <div className="add-sale-grid add-sale-grid--3">
+                  <Field label="Name" required error={errors.name}>
+                    <Input
+                      value={form.name}
+                      onChange={(e) => setField('name', e.target.value)}
+                      invalid={!!errors.name}
                     />
-                  </Form.Item>
-                  <Form.Item
-                    name="time"
-                    label="Time"
-                    rules={[{ required: true, message: 'Time is required' }]}
-                    className="form-item"
-                  >
-                    <DatePicker.TimePicker
-                      format="HH:mm"
-                      className="w-full"
-                      disabled
-                      style={{
-                        borderRadius: '8px',
-                        border: '1px solid #d1d5db',
-                        background: '#f0f2f5',
-                        color: '#4b5563',
-                      }}
+                  </Field>
+                  <Field label="Mobile" required error={errors.mobile}>
+                    <Input
+                      value={form.mobile}
+                      onChange={(e) => setField('mobile', e.target.value)}
+                      invalid={!!errors.mobile}
+                      inputMode="numeric"
+                      maxLength={10}
                     />
-                  </Form.Item>
+                  </Field>
+                  <Field label="Shop" required error={errors.shop}>
+                    <Input
+                      value={form.shop}
+                      onChange={(e) => setField('shop', e.target.value)}
+                      invalid={!!errors.shop}
+                    />
+                  </Field>
                 </div>
-                <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4" style={{ color: '#1f2937' }}>
-                    Customer Information
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <Form.Item
-                      name="name"
-                      label="Name"
-                      rules={[{ required: true, message: 'Please enter a name' }]}
-                      className="form-item"
+              </SaleFormSection>
+            </Suspense>
+
+            {/* Sale Details */}
+            <Suspense fallback={<div className="add-sale-lazy-placeholder" aria-hidden />}>
+              <SaleFormSection
+                title="Sale Details"
+                description={
+                  plantTypes.length > 0
+                    ? `Enter quantities for each ice type at ${form.unit}`
+                    : 'Select a factory plant first to load ice types'
+                }
+              >
+                <div className="add-sale-grid add-sale-grid--3">
+                  {/* Plant selector */}
+                  <Field label="Unit" required error={errors.unit}>
+                    <Select
+                      value={form.unit}
+                      onChange={(e) => handleUnitChange(e.target.value)}
+                      options={unitOptions}
+                      placeholder={
+                        typesLoading
+                          ? 'Loading plants…'
+                          : unitOptions.length === 0
+                          ? 'No plants in master'
+                          : 'Select plant'
+                      }
+                      invalid={!!errors.unit}
+                    />
+                  </Field>
+
+                  {/* Dynamic quantity inputs — one per ice type */}
+                  {form.items.map((item: SaleItem) => (
+                    <Field
+                      key={item.iceTypeId}
+                      label={`${item.iceTypeName} (₹${item.price})`}
                     >
                       <Input
-                        className="w-full"
-                        style={{
-                          borderRadius: '8px',
-                          border: '1px solid #d1d5db',
-                          padding: '10px',
-                          transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
-                        }}
+                        value={item.quantity}
+                        onChange={(e) => setItemQty(item.iceTypeId, e.target.value)}
+                        inputMode="numeric"
+                        disabled={itemsDisabled}
+                        placeholder="0"
                       />
-                    </Form.Item>
-                    <Form.Item
-                      name="mobile"
-                      label="Mobile"
-                      rules={[
-                        { required: true, message: 'Please enter a mobile number' },
-                        {
-                          pattern: /^[6-9]\d{9}$/,
-                          message: 'Please enter a valid 10-digit Indian mobile number',
-                        },
-                      ]}
-                      className="form-item"
-                    >
-                      <Input
-                        className="w-full"
-                        style={{
-                          borderRadius: '8px',
-                          border: '1px solid #d1d5db',
-                          padding: '10px',
-                        }}
-                      />
-                    </Form.Item>
-                    <Form.Item
-                      name="shop"
-                      label="Shop"
-                      rules={[{ required: true, message: 'Please enter a shop name' }]}
-                      className="form-item"
-                    >
-                      <Input
-                        className="w-full"
-                        style={{
-                          borderRadius: '8px',
-                          border: '1px solid #d1d5db',
-                          padding: '10px',
-                        }}
-                      />
-                    </Form.Item>
-                  </div>
+                    </Field>
+                  ))}
+
+                  {/* Discount — always shown after items */}
+                  <Field label="Discount (₹)" error={errors.discount}>
+                    <Input
+                      value={form.discount}
+                      onChange={(e) => {
+                        if (isValidNumericInput(e.target.value))
+                          setField('discount', e.target.value);
+                      }}
+                      inputMode="numeric"
+                      disabled={itemsDisabled}
+                    />
+                  </Field>
+
+                  {/* Sold By */}
+                  <Field label="Sold By" required error={errors.soldBy}>
+                    <Input
+                      value={form.soldBy}
+                      onChange={(e) => setField('soldBy', e.target.value)}
+                      invalid={!!errors.soldBy}
+                    />
+                  </Field>
                 </div>
-                <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4" style={{ color: '#1f2937' }}>
-                    Sale Details
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Form.Item
-                      name="unit"
-                      label="Unit"
-                      rules={[{ required: true, message: 'Please select a unit' }]}
-                      className="form-item"
-                    >
-                      <Select allowClear className="w-full" style={{ borderRadius: '8px' }}>
-                        <Select.Option value="Unit 1">Unit 1</Select.Option>
-                        <Select.Option value="Unit 2">Unit 2</Select.Option>
-                        <Select.Option value="Unit 3">Unit 3</Select.Option>
-                      </Select>
-                    </Form.Item>
-                    <Form.Item
-                      name="cans"
-                      label="Cans"
-                      rules={[{ required: true, message: 'Please enter number of cans' }]}
-                      className="form-item"
-                    >
-                      <InputNumber min={0} className="w-full" style={{ borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                    </Form.Item>
-                    <Form.Item
-                      name="blocks"
-                      label="Blocks"
-                      rules={[{ required: true, message: 'Please enter number of blocks' }]}
-                      className="form-item"
-                    >
-                      <InputNumber min={0} className="w-full" style={{ borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                    </Form.Item>
-                    <Form.Item
-                      name="pieces"
-                      label="Pieces"
-                      rules={[{ required: true, message: 'Please enter number of pieces' }]}
-                      className="form-item"
-                    >
-                      <InputNumber min={0} className="w-full" style={{ borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                    </Form.Item>
-                    <Form.Item
-                      name="discount"
-                      label="Discount"
-                      rules={[{ required: true, message: 'Please enter discount amount' }]}
-                      className="form-item"
-                    >
-                      <InputNumber min={0} className="w-full" style={{ borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                    </Form.Item>
-                    <Form.Item label="Total Cans" shouldUpdate className="form-item">
-                      {() => (
-                        <span className="text-base font-medium" style={{ color: '#10b981' }}>
-                          {calculateTotalCans(
-                            form.getFieldValue('cans') || 0,
-                            form.getFieldValue('blocks') || 0,
-                            form.getFieldValue('pieces') || 0
-                          ).toFixed(2)}
-                        </span>
-                      )}
-                    </Form.Item>
-                    <Form.Item label="Total Amount" shouldUpdate className="form-item">
-                      {() => (
-                        <span className="text-base font-medium" style={{ color: '#2563eb' }}>
-                          {calculateTotal(
-                            form.getFieldValue('cans') || 0,
-                            form.getFieldValue('blocks') || 0,
-                            form.getFieldValue('pieces') || 0,
-                            form.getFieldValue('discount') || 0
-                          )} Rs
-                        </span>
-                      )}
-                    </Form.Item>
-                  </div>
-                </div>
-                <Form.Item
-                  name="soldBy"
-                  label="Sold By"
-                  rules={[{ required: true, message: 'Please enter sold by' }]}
-                  className="form-item"
-                >
-                  <Input
-                    className="w-full"
-                    style={{ borderRadius: '8px', border: '1px solid #d1d5db', padding: '10px' }}
-                  />
-                </Form.Item>
-                <Form.Item>
-                  <Button
-                    className="modal-cancel-btn"
-                    onClick={() => navigate('/sales')}
-                    style={{
-                      borderRadius: '8px',
-                      padding: '8px 20px',
-                      fontWeight: 500,
-                      borderColor: '#d1d5db',
-                      color: '#4b5563',
-                      background: '#ffffff',
-                      marginRight: '10px',
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="primary"
-                    htmlType="submit"
-                    loading={loading}
-                    style={{
-                      borderRadius: '8px',
-                      padding: '8px 20px',
-                      fontWeight: 500,
-                      background: '#2563eb',
-                      borderColor: '#2563eb',
-                      color: '#ffffff',
-                    }}
-                  >
-                    Add
-                  </Button>
-                </Form.Item>
-              </div>
-            </Form>
-          </div>
-        </motion.div>
-      </div>
+
+                {/* Items validation error */}
+                {errors.items && (
+                  <p style={{ color: 'var(--color-error)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                    {errors.items}
+                  </p>
+                )}
+              </SaleFormSection>
+            </Suspense>
+
+            {/* Totals */}
+            <Suspense fallback={<div className="add-sale-lazy-placeholder" aria-hidden />}>
+              <SaleTotalsPreview
+                totalUnitsText={`${totalUnits} units`}
+                totalAmountText={formatCurrency(totalAmount)}
+              />
+            </Suspense>
+
+            <div className="add-sale-actions">
+              <Button variant="secondary" type="button" onClick={() => navigate('/')}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!canSubmit}>
+                Review &amp; Save
+              </Button>
+            </div>
+          </form>
+        </div>
+      </Card>
+
+      <Suspense fallback={null}>
+        {form.items.length > 0 && (
+          <SalePreviewModal
+            open={previewOpen}
+            form={form}
+            totalUnits={totalUnits}
+            totalAmount={totalAmount}
+            saving={saving}
+            onEdit={handleBackToEdit}
+            onConfirm={handleConfirmSave}
+          />
+        )}
+      </Suspense>
     </div>
   );
 };
 
-export default React.memo(AddSale);
+export default AddSale;
