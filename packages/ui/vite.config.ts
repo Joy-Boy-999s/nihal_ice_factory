@@ -6,6 +6,12 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, '');
   const apiBaseUrl = env['VITE_API_URL'] ?? 'http://localhost:3000';
 
+  // Absolute paths to browser-safe stubs for server-only NestJS modules.
+  // These libs use Node.js APIs (class-transformer/storage, reflect-metadata, etc.)
+  // that don't exist in the browser — the frontend only needs their TS types.
+  const stubs = (name: string) =>
+    path.resolve(__dirname, `src/stubs/${name}.ts`);
+
   return {
     root: __dirname,
     cacheDir: '../../node_modules/.vite/packages/ui',
@@ -23,6 +29,7 @@ export default defineConfig(({ mode }) => {
     },
     resolve: {
       alias: {
+        // ── Monorepo libs ───────────────────────────────────────────────────
         '@nihal-ice-factory/shared-services': path.resolve(
           __dirname,
           '../../libs/shared-services/src/index.ts'
@@ -31,7 +38,16 @@ export default defineConfig(({ mode }) => {
           __dirname,
           '../../libs/shared-models/src/index.ts'
         ),
+        // ── NestJS / server-only stubs ──────────────────────────────────────
+        // These must come BEFORE any catch-all rule.
+        'class-transformer/storage': stubs('class-transformer-storage'),
+        '@nestjs/swagger':           stubs('nestjs-swagger'),
+        '@nestjs/mapped-types':      stubs('nestjs-mapped-types'),
       },
+    },
+    optimizeDeps: {
+      // Exclude packages that use Node.js APIs so Vite doesn't try to pre-bundle them.
+      exclude: ['@nestjs/mapped-types', '@nestjs/swagger'],
     },
     build: {
       outDir: '../../dist/packages/ui',
