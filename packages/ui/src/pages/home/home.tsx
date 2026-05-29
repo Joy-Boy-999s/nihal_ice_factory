@@ -200,7 +200,7 @@ const Home: React.FC = () => {
       if (res?.status && res.errorCode === 200) {
         const envelope = res.data as ResponsePayloadRecord | null;
         const nested   = (envelope?.['data'] ?? envelope) ?? null;
-        setSales(Array.isArray(nested) ? (nested as Sale[]) : []);
+        setSales(Array.isArray(nested) ? (nested as unknown as Sale[]) : []);
       } else {
         throw new Error(res?.internalMessage || 'Failed to load sales');
       }
@@ -375,7 +375,7 @@ const Home: React.FC = () => {
         if (!res?.status) throw new Error(res?.internalMessage || 'Update failed');
 
         const envelope = res.data as ResponsePayloadRecord | null;
-        const inner    = ((envelope?.['data'] as ResponsePayloadRecord)?.['data'] ?? envelope?.['data'] ?? envelope) as Sale;
+        const inner    = ((envelope?.['data'] as ResponsePayloadRecord)?.['data'] ?? envelope?.['data'] ?? envelope) as unknown as Sale;
         setSales((prev) => prev.map((s) => (s.id === editing.id ? { ...s, ...inner } : s)));
         toast.success('Sale updated');
       } else {
@@ -394,7 +394,7 @@ const Home: React.FC = () => {
         if (!res?.status) throw new Error(res?.internalMessage || 'Create failed');
 
         const envelope  = res.data as ResponsePayloadRecord | null;
-        const newSale   = (envelope?.['data'] ?? envelope) as Sale;
+        const newSale   = (envelope?.['data'] ?? envelope) as unknown as Sale;
         setSales((prev) => [newSale, ...prev]);
         toast.success('Sale created');
       }

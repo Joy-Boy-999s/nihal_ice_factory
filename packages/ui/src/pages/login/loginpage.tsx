@@ -108,7 +108,7 @@ const LoginPage: React.FC = () => {
         const req: UserLoginModel = { email: form.email, password: form.password };
         const res: CommonResponse = await userService.loginUser(req);
         if (res.status && res.errorCode === 200) {
-          const payload = res.data as LoginPayload;
+          const payload = res.data as unknown as LoginPayload;
           login(payload.accessToken, payload.user.role);
           toast.success('Signed in successfully');
           const role = String(payload.user.role).toUpperCase();

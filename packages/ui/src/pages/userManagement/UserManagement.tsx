@@ -522,7 +522,7 @@ const UserManagement: React.FC = () => {
           <Field label="Role" required className="um-form-grid--full">
             <Select
               value={createForm.role}
-              onChange={(v) => setCreateField('role', v as UserRole)}
+              onChange={(e) => setCreateField('role', e.target.value as UserRole)}
               options={[
                 { label: 'Operator (User)', value: UserRole.USER },
                 { label: 'Administrator', value: UserRole.ADMIN },

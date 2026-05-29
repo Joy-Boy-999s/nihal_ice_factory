@@ -11,7 +11,7 @@ interface State {
 }
 
 export class ErrorBoundary extends React.Component<Props, State> {
-  state: State = { error: null, errorId: null };
+  override state: State = { error: null, errorId: null };
 
   static getDerivedStateFromError(error: Error): State {
     return {
@@ -20,7 +20,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
     };
   }
 
-  componentDidCatch(error: Error, info: React.ErrorInfo) {
+  override componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[ErrorBoundary]', error, info.componentStack);
   }
 
@@ -31,7 +31,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
     window.location.href = '/';
   };
 
-  render() {
+  override render() {
     const { error, errorId } = this.state;
     if (!error) return this.props.children;
 
