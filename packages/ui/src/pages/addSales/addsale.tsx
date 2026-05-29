@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { SalesHelpService, IceTypeService, PlantService } from '@nihal-ice-factory/shared-services';
 import { IceTypeDto, PlantDto, ResponsePayloadRecord } from '@nihal-ice-factory/shared-models';
 import { Button, Card, Field, Input, PageHeader, Select, useToast } from '../../components';
-import { buildAuthConfig, logout } from '../../lib/auth';
+import { buildAuthConfig, getUserId, logout, useAuth } from '../../lib/auth';
 import {
   buildFormItems,
   calculateTotal,
@@ -31,6 +31,8 @@ const SalePreviewModal = lazy(() => import('./components/SalePreviewModal'));
 const AddSale: React.FC = () => {
   const navigate    = useNavigate();
   const toast       = useToast();
+  const { role }    = useAuth();
+  const isAdmin     = role === 'ADMIN';
   const salesService   = useMemo(() => new SalesHelpService(), []);
   const iceTypeService = useMemo(() => new IceTypeService(), []);
   const plantService   = useMemo(() => new PlantService(), []);
@@ -44,18 +46,57 @@ const AddSale: React.FC = () => {
   const [apiTypes, setApiTypes]           = useState<IceTypeDto[]>([]);
   const [typesLoading, setTypesLoading]   = useState(true);
 
-  // Active plants from Plant Master → drives the Unit dropdown.
+  // All active plants; for non-admins filtered to accessible plants only.
   const [activePlants, setActivePlants] = useState<PlantDto[]>([]);
-
-  const unitOptions = useMemo(
-    () => activePlants.map((p) => ({ label: p.plantName, value: p.plantName })),
-    [activePlants],
+  const [accessiblePlants, setAccessiblePlants] = useState<Set<string> | null>(
+    isAdmin ? null : null,
   );
+
+  const unitOptions = useMemo(() => {
+    const visible = isAdmin
+      ? activePlants
+      : activePlants.filter((p) => accessiblePlants?.has(p.plantName) ?? false);
+    return visible.map((p) => ({ label: p.plantName, value: p.plantName }));
+  }, [activePlants, isAdmin, accessiblePlants]);
 
   // Active ice types for the currently selected plant.
   const plantTypes = useMemo(
     () => getIceTypesForPlant(apiTypes, form.unit || undefined),
     [apiTypes, form.unit],
+  );
+
+  // Resolve which plants the current (non-admin) user can access.
+  const fetchUserAccess = useCallback(
+    async (plants: PlantDto[]) => {
+      if (isAdmin) { setAccessiblePlants(null); return; }
+      const userId = getUserId();
+      if (!userId || !plants.length) { setAccessiblePlants(new Set()); return; }
+      try {
+        const results = await Promise.all(
+          plants.map((p) =>
+            plantService
+              .getUsersForPlant(p.id, buildAuthConfig())
+              .then((res) => ({ plant: p, res })),
+          ),
+        );
+        const allowed = new Set<string>();
+        for (const { plant, res } of results) {
+          if (!res?.status) continue;
+          const envelope = res.data as ResponsePayloadRecord | null;
+          const raw = ((envelope?.['data'] as ResponsePayloadRecord | null | undefined)?.['data']
+            ?? envelope?.['data']
+            ?? envelope) as unknown;
+          const users = Array.isArray(raw) ? (raw as { userId: string }[]) : [];
+          if (users.some((u) => u.userId === userId)) {
+            allowed.add(plant.plantName);
+          }
+        }
+        setAccessiblePlants(allowed);
+      } catch {
+        setAccessiblePlants(new Set());
+      }
+    },
+    [isAdmin, plantService],
   );
 
   // Fetch ice types + active plants once on mount.
@@ -76,14 +117,16 @@ const AddSale: React.FC = () => {
       if (plantsRes?.status) {
         const envelope = plantsRes.data as ResponsePayloadRecord | null;
         const raw = (envelope?.['data'] ?? envelope) ?? [];
-        setActivePlants(Array.isArray(raw) ? (raw as unknown as PlantDto[]) : []);
+        const plants = Array.isArray(raw) ? (raw as unknown as PlantDto[]) : [];
+        setActivePlants(plants);
+        if (!isAdmin) fetchUserAccess(plants);
       }
     } catch {
       // Silently fall back — UI will show guidance.
     } finally {
       setTypesLoading(false);
     }
-  }, [iceTypeService, plantService]);
+  }, [iceTypeService, plantService, isAdmin, fetchUserAccess]);
 
   useEffect(() => { fetchTypes(); }, [fetchTypes]);
 
