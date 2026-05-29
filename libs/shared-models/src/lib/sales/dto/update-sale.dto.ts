@@ -1,6 +1,5 @@
-// src/sales/dto/sale-update.dto.ts
-
-import { IsOptional, IsString, IsNumber } from 'class-validator';
+import { IsOptional, IsString, IsNumber, IsArray, Min } from 'class-validator';
+import { SaleItemInput } from './create-sale.dto';
 
 export class SaleUpdateDto {
   @IsString()
@@ -27,19 +26,13 @@ export class SaleUpdateDto {
   @IsOptional()
   shop?: string;
 
-  @IsNumber()
+  /** Replaced line items — if provided, replaces the entire items list. */
+  @IsArray()
   @IsOptional()
-  cans?: number;
+  items?: SaleItemInput[];
 
   @IsNumber()
-  @IsOptional()
-  blocks?: number;
-
-  @IsNumber()
-  @IsOptional()
-  pieces?: number;
-
-  @IsNumber()
+  @Min(0)
   @IsOptional()
   discount?: number;
 

@@ -1,4 +1,24 @@
-import { IsString, IsNumber, IsDateString, IsIn, Min, IsOptional } from 'class-validator';
+import {
+  IsArray,
+  IsDateString,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateNested,
+  ArrayMinSize,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class SaleItemInput {
+  @IsNumber()
+  @Min(1)
+  iceTypeId: number;
+
+  @IsNumber()
+  @Min(0)
+  quantity: number;
+}
 
 export class CreateSaleDto {
   @IsDateString()
@@ -8,7 +28,6 @@ export class CreateSaleDto {
   time: string;
 
   @IsString()
-  @IsIn(['Unit 1', 'Unit 2', 'Unit 3'])
   unit: string;
 
   @IsString()
@@ -20,30 +39,16 @@ export class CreateSaleDto {
   @IsString()
   shop: string;
 
-  @IsNumber()
-  @Min(0)
-  cans: number;
-
-  @IsNumber()
-  @Min(0)
-  blocks: number;
-
-  @IsNumber()
-  @Min(0)
-  pieces: number;
-
-  @IsNumber()
-  @Min(0)
-  totalCans: number;
+  @IsArray()
+  @ArrayMinSize(1, { message: 'At least one item is required.' })
+  @ValidateNested({ each: true })
+  @Type(() => SaleItemInput)
+  items: SaleItemInput[];
 
   @IsOptional()
   @IsNumber()
   @Min(0)
   discount?: number;
-
-  @IsNumber()
-  @Min(0)
-  totalAmount: number;
 
   @IsString()
   soldBy: string;

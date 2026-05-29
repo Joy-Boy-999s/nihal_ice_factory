@@ -9,6 +9,8 @@ const LoginPage      = lazy(() => import('../pages/login/loginpage'));
 const Home           = lazy(() => import('../pages/home/home'));
 const Dashboard      = lazy(() => import('../pages/dashboard/dashboard'));
 const AddSale        = lazy(() => import('../pages/addSales/addsale'));
+const IcePriceMaster = lazy(() => import('../pages/icePriceMaster/IcePriceMaster'));
+const PlantMaster    = lazy(() => import('../pages/plantMaster/PlantMaster'));
 const NotFoundPage   = lazy(() => import('../pages/errors/NotFoundPage'));
 const UnauthorizedPage = lazy(() => import('../pages/errors/UnauthorizedPage'));
 
@@ -91,6 +93,22 @@ const AppRoutes: React.FC = () => {
               element={
                 <LazyPage label="Loading dashboard...">
                   <Dashboard />
+                </LazyPage>
+              }
+            />
+            <Route
+              path="/ice-price-master"
+              element={
+                <LazyPage label="Loading price master...">
+                  <IcePriceMaster />
+                </LazyPage>
+              }
+            />
+            <Route
+              path="/plant-master"
+              element={
+                <LazyPage label="Loading plant master...">
+                  <PlantMaster />
                 </LazyPage>
               }
             />

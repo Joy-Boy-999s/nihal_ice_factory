@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource, ObjectLiteral, QueryRunner, Repository } from 'typeorm';
+import { DataSource, EntityTarget, ObjectLiteral, QueryRunner, Repository } from 'typeorm';
 
 export interface ITransactionHelper {
   startTransaction(): Promise<void>;
@@ -52,7 +52,7 @@ export class GenericTransactionManager implements ITransactionHelper {
     if (!this.queryRunner) {
       throw new Error('Transaction not started. Please call startTransaction() first.');
     }
-    return this.queryRunner.manager.getRepository(entity.target as any);
+    return this.queryRunner.manager.getRepository(entity.target as EntityTarget<T>);
   }
 
   async completeTransaction(work: () => Promise<void>): Promise<void> {

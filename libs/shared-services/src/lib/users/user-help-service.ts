@@ -39,4 +39,8 @@ export class UserHelpService extends CommonAxiosService {
   async resetPassword(reqModel: ResetPassowordModel, config?: AxiosRequestConfig): Promise<CommonResponse> {
     return await this.axiosPostCall(this.getURLwithMainEndPoint('resetPassword'), reqModel, config);
   }
+
+  async getAllUsers(config?: AxiosRequestConfig): Promise<CommonResponse> {
+    return await this.axiosGetCall(this.getURLwithMainEndPoint('getAll'), config);
+  }
 }

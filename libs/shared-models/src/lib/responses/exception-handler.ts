@@ -1,27 +1,25 @@
 import { CommonResponse } from './common-response';
 
+/** Minimal shape of any error object that {@link ExceptionHandler.handleError} knows how to inspect. */
+export interface HandleableError {
+  /** NestJS HTTP exceptions expose this. */
+  getStatus?: () => number;
+  /** Axios / plain-object errors carry a numeric status. */
+  status?: number;
+  message?: string;
+}
+
 export class ExceptionHandler {
-  static handleError(error: any, message: string): CommonResponse {
-    // Support NestJS-like errors without importing backend-only packages in UI bundles.
-    if (error && typeof error.getStatus === 'function') {
-      return new CommonResponse(
-        false, 
-        error.getStatus(), 
-        error.message ?? message
-      );
+  static handleError(error: HandleableError, message: string): CommonResponse {
+    // NestJS-like errors (HttpException, ForbiddenException, …)
+    if (typeof error.getStatus === 'function') {
+      return new CommonResponse(false, error.getStatus(), error.message ?? message);
     }
-    if (error && typeof error.status === 'number') {
-      return new CommonResponse(
-        false,
-        error.status,
-        error.message ?? message
-      );
+    // Axios-like errors or plain objects with a numeric status
+    if (typeof error.status === 'number') {
+      return new CommonResponse(false, error.status, error.message ?? message);
     }
-    // For other errors, return a 500 Internal Server Error response
-    return new CommonResponse(
-      false, 
-      500, 
-      message
-    );
+    // Fallback — treat as 500
+    return new CommonResponse(false, 500, message);
   }
 }

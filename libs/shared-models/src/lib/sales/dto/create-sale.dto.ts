@@ -1,4 +1,17 @@
-import { IsString, IsNumber, IsDateString, IsIn, Min, IsOptional } from 'class-validator';
+import { IsString, IsNumber, IsDateString, Min, IsOptional, IsArray } from 'class-validator';
+
+/** A single line item sent by the client when creating/updating a sale. */
+export class SaleItemInput {
+  /** ID of the IceType entry from the master. */
+  @IsNumber()
+  @Min(1)
+  iceTypeId: number;
+
+  /** Quantity of this ice type sold. */
+  @IsNumber()
+  @Min(0)
+  quantity: number;
+}
 
 export class CreateSaleDto {
   @IsDateString()
@@ -7,8 +20,8 @@ export class CreateSaleDto {
   @IsString()
   time: string;
 
+  /** Factory plant / unit (e.g. "Unit 1"). */
   @IsString()
-  @IsIn(['Unit 1', 'Unit 2', 'Unit 3'])
   unit: string;
 
   @IsString()
@@ -20,30 +33,14 @@ export class CreateSaleDto {
   @IsString()
   shop: string;
 
-  @IsNumber()
-  @Min(0)
-  cans: number;
-
-  @IsNumber()
-  @Min(0)
-  blocks: number;
-
-  @IsNumber()
-  @Min(0)
-  pieces: number;
-
-  @IsNumber()
-  @Min(0)
-  totalCans: number;
+  /** At least one item with quantity > 0 required. */
+  @IsArray()
+  items: SaleItemInput[];
 
   @IsOptional()
   @IsNumber()
   @Min(0)
   discount?: number;
-
-  @IsNumber()
-  @Min(0)
-  totalAmount: number;
 
   @IsString()
   soldBy: string;
