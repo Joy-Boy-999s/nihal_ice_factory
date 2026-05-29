@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { In } from 'typeorm';
 import {
   CommonResponse,
   DashboardChartSeriesDto,
@@ -12,6 +13,7 @@ import { SalesRepository } from './repository/sales.repository';
 import { Sale, SaleItemSnapshot } from './entities/sale.entity';
 import { IceTypeService } from '../IcePrice/ice-price.service';
 import { IceType } from '../IcePrice/entities/ice-price.entity';
+import { PlantService } from '../Plant/plant.service';
 
 @Injectable()
 export class SalesService {
@@ -19,19 +21,44 @@ export class SalesService {
     private readonly salesRepository: SalesRepository,
     private readonly transactionManager: GenericTransactionManager,
     private readonly iceTypeService: IceTypeService,
+    private readonly plantService: PlantService,
   ) {}
 
-  // ── Totals calculation ───────────────────────────────────────────────────
+  // ── Plant-access helpers ─────────────────────────────────────────────────
 
   /**
-   * Resolves live prices for each item, builds the snapshot array, and
-   * computes `totalUnits` + `totalAmount`.
-   *
-   * Throws if:
-   *  • No active ice types exist for the plant.
-   *  • An iceTypeId in the items list does not belong to the plant.
-   *  • Every item has quantity 0.
+   * Returns plant names the user has been assigned to.
+   * Always returns the full list for ADMIN (pass isAdmin=true to skip the DB lookup).
    */
+  private async getAccessiblePlantNames(userId: string): Promise<string[]> {
+    const plants = await this.plantService.getAccessible(userId, false);
+    return plants.map((p) => p.plantName);
+  }
+
+  /**
+   * Returns a 403 CommonResponse if the user (non-admin) cannot access plantName.
+   * Returns null when access is granted.
+   */
+  private async checkPlantAccess(
+    plantName: string,
+    userId: string,
+    isAdmin: boolean,
+  ): Promise<CommonResponse | null> {
+    if (isAdmin) return null;
+    const names = await this.getAccessiblePlantNames(userId);
+    if (!names.includes(plantName)) {
+      return new CommonResponse(
+        false,
+        403,
+        `Access denied: you are not assigned to plant "${plantName}"`,
+        null,
+      );
+    }
+    return null;
+  }
+
+  // ── Item-totals builder ──────────────────────────────────────────────────
+
   private async buildSaleItems(
     items: SaleItemInput[],
     discount: number,
@@ -47,7 +74,6 @@ export class SalesService {
     }
 
     const typeMap = new Map<number, IceType>(activeTypes.map((t) => [t.id, t]));
-
     const snapshots: SaleItemSnapshot[] = [];
     let totalUnits = 0;
     let subtotalBeforeDiscount = 0;
@@ -86,7 +112,19 @@ export class SalesService {
 
   // ── CRUD ─────────────────────────────────────────────────────────────────
 
-  async create(createSaleDto: CreateSaleDto): Promise<CommonResponse> {
+  /**
+   * Create a sale.
+   * Non-admin users must be assigned to the target plant.
+   */
+  async create(
+    createSaleDto: CreateSaleDto,
+    userId: string,
+    isAdmin: boolean,
+  ): Promise<CommonResponse> {
+    // Enforce plant access BEFORE opening a transaction.
+    const denied = await this.checkPlantAccess(createSaleDto.unit, userId, isAdmin);
+    if (denied) return denied;
+
     await this.transactionManager.startTransaction();
     try {
       const saleRepo = this.transactionManager.getRepository(this.salesRepository);
@@ -121,13 +159,13 @@ export class SalesService {
     }
   }
 
+  /** Update a sale. Admin-only (enforced at the controller by RolesGuard). */
   async update(saleId: number, updateSaleDto: SaleUpdateDto): Promise<CommonResponse> {
     await this.transactionManager.startTransaction();
     try {
       const sale = await this.salesRepository.findOne({ where: { id: saleId } });
       if (!sale) throw new Error('Sale not found');
 
-      // Only recompute if items or unit changed.
       let updatedItems  = sale.items;
       let updatedUnits  = sale.totalUnits;
       let updatedAmount = sale.totalAmount;
@@ -169,20 +207,34 @@ export class SalesService {
     }
   }
 
-  async getAllSales(): Promise<CommonResponse> {
-    await this.transactionManager.startTransaction();
+  /**
+   * Return all sales.
+   * ADMIN  → entire table.
+   * USER   → only sales whose unit (plant name) the user is assigned to.
+   *          Resolved via a single IN query — data never leaves the DB for inaccessible rows.
+   */
+  async getAllSales(userId: string, isAdmin: boolean): Promise<CommonResponse> {
     try {
-      const saleRepo = this.transactionManager.getRepository(this.salesRepository);
-      const sales = await saleRepo.find();
-      await this.transactionManager.commitTransaction();
+      let sales: Sale[];
+
+      if (isAdmin) {
+        sales = await this.salesRepository.find();
+      } else {
+        const names = await this.getAccessiblePlantNames(userId);
+        if (names.length === 0) {
+          return new CommonResponse(true, 200, 'Sales fetched successfully', []);
+        }
+        sales = await this.salesRepository.find({ where: { unit: In(names) } });
+      }
+
       return new CommonResponse(true, 200, 'Sales fetched successfully', sales);
     } catch (error) {
-      await this.transactionManager.rollbackTransaction();
       const message = error instanceof Error ? error.message : 'Unknown error occurred';
       return new CommonResponse(false, 500, message, null);
     }
   }
 
+  /** Delete one sale. Admin-only (enforced at the controller by RolesGuard). */
   async deleteOne(id: number): Promise<CommonResponse> {
     await this.transactionManager.startTransaction();
     try {
@@ -202,6 +254,7 @@ export class SalesService {
     }
   }
 
+  /** Delete multiple sales. Admin-only (enforced at the controller by RolesGuard). */
   async deleteMany(ids: number[]): Promise<CommonResponse> {
     await this.transactionManager.startTransaction();
     try {
@@ -221,10 +274,18 @@ export class SalesService {
     }
   }
 
-  async findOne(id: number): Promise<CommonResponse> {
+  /**
+   * Fetch a single sale by ID.
+   * Non-admin users can only fetch sales from their assigned plants.
+   */
+  async findOne(id: number, userId: string, isAdmin: boolean): Promise<CommonResponse> {
     try {
       const sale = await this.salesRepository.findOne({ where: { id } });
       if (!sale) throw new NotFoundException(`Sale with ID ${id} not found`);
+
+      const denied = await this.checkPlantAccess(sale.unit, userId, isAdmin);
+      if (denied) return denied;
+
       return new CommonResponse(true, 200, 'Sale fetched successfully', sale);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -244,13 +305,16 @@ export class SalesService {
   // ── Print data ───────────────────────────────────────────────────────────
 
   /**
-   * Returns the sale with its full item breakdown for invoice printing.
-   * No live price lookup needed — the snapshot stored in `items` is the source.
+   * Return invoice print data for a sale.
+   * Non-admin users can only print sales from their assigned plants.
    */
-  async getPrintData(id: number): Promise<CommonResponse> {
+  async getPrintData(id: number, userId: string, isAdmin: boolean): Promise<CommonResponse> {
     try {
       const sale = await this.salesRepository.findOne({ where: { id } });
       if (!sale) throw new NotFoundException(`Sale with ID ${id} not found`);
+
+      const denied = await this.checkPlantAccess(sale.unit, userId, isAdmin);
+      if (denied) return denied;
 
       const printData = {
         ...sale,
@@ -277,6 +341,7 @@ export class SalesService {
 
   // ── Dashboard ────────────────────────────────────────────────────────────
 
+  /** Dashboard metrics — admin only (enforced at the controller). */
   async getDashboardMetrics(): Promise<CommonResponse> {
     try {
       const sales = await this.salesRepository.find();
@@ -357,9 +422,9 @@ export class SalesService {
     const sumAmount = (rows: Sale[]): number =>
       rows.reduce((total, row) => total + Number(row.totalAmount || 0), 0);
 
-    const todayTotal    = sumAmount(todaySales);
-    const weekTotal     = sumAmount(weekSales);
-    const monthTotal    = sumAmount(monthSales);
+    const todayTotal     = sumAmount(todaySales);
+    const weekTotal      = sumAmount(weekSales);
+    const monthTotal     = sumAmount(monthSales);
     const prevMonthTotal = sumAmount(prevMonthSales);
 
     const uniqueCustomers = new Set(

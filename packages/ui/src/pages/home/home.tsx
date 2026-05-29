@@ -21,7 +21,7 @@ import {
   Select,
   useToast,
 } from '../../components';
-import { buildAuthConfig, getUserId, logout, useAuth } from '../../lib/auth';
+import { buildAuthConfig, logout, useAuth } from '../../lib/auth';
 import { todayISO, nowHHMM } from '../../lib/date';
 import {
   buildFormItems,
@@ -160,52 +160,11 @@ const Home: React.FC = () => {
   const [activePlants, setActivePlants] = useState<PlantDto[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([]);
 
-  // null = not yet loaded; Set<string> = resolved plant names the user can access
-  const [accessiblePlants, setAccessiblePlants] = useState<Set<string> | null>(
-    isAdmin ? null : null,
+  // Plant dropdown — driven by getActivePlants which is already role-aware on the backend.
+  const unitOptions = useMemo(
+    () => activePlants.map((p) => ({ label: p.plantName, value: p.plantName })),
+    [activePlants],
   );
-
-  // Resolve which plants the current (non-admin) user can access.
-  const fetchUserAccess = useCallback(
-    async (plants: PlantDto[]) => {
-      if (isAdmin) { setAccessiblePlants(null); return; }
-      const userId = getUserId();
-      if (!userId || !plants.length) { setAccessiblePlants(new Set()); return; }
-      try {
-        const results = await Promise.all(
-          plants.map((p) =>
-            plantService
-              .getUsersForPlant(p.id, buildAuthConfig())
-              .then((res) => ({ plant: p, res })),
-          ),
-        );
-        const allowed = new Set<string>();
-        for (const { plant, res } of results) {
-          if (!res?.status) continue;
-          const envelope = res.data as ResponsePayloadRecord | null;
-          const raw = ((envelope?.['data'] as ResponsePayloadRecord | null | undefined)?.['data']
-            ?? envelope?.['data']
-            ?? envelope) as unknown;
-          const users = Array.isArray(raw) ? (raw as { userId: string }[]) : [];
-          if (users.some((u) => u.userId === userId)) {
-            allowed.add(plant.plantName);
-          }
-        }
-        setAccessiblePlants(allowed);
-      } catch {
-        setAccessiblePlants(new Set());
-      }
-    },
-    [isAdmin, plantService],
-  );
-
-  // Plant dropdown: admins see every plant; users see only their accessible plants.
-  const unitOptions = useMemo(() => {
-    const visible = isAdmin
-      ? activePlants
-      : activePlants.filter((p) => accessiblePlants?.has(p.plantName) ?? false);
-    return visible.map((p) => ({ label: p.plantName, value: p.plantName }));
-  }, [activePlants, isAdmin, accessiblePlants]);
 
   const [modalOpen, setModalOpen]   = useState(false);
   const [editing, setEditing]       = useState<Sale | null>(null);
@@ -269,15 +228,12 @@ const Home: React.FC = () => {
       if (plantsRes?.status) {
         const envelope = plantsRes.data as ResponsePayloadRecord | null;
         const raw      = (envelope?.['data'] ?? envelope) ?? [];
-        const plants   = Array.isArray(raw) ? (raw as unknown as PlantDto[]) : [];
-        setActivePlants(plants);
-        // Resolve plant access for non-admin users after plant list is ready.
-        if (!isAdmin) fetchUserAccess(plants);
+        setActivePlants(Array.isArray(raw) ? (raw as unknown as PlantDto[]) : []);
       }
     } catch {
       // Silently fall back.
     }
-  }, [iceTypeService, plantService, isAdmin, fetchUserAccess]);
+  }, [iceTypeService, plantService]);
 
   useEffect(() => {
     fetchSales();
@@ -286,30 +242,20 @@ const Home: React.FC = () => {
 
   // ── Table filter ──────────────────────────────────────────────────────────
 
+  // Backend already returns only accessible sales — just apply the text filter here.
   const filteredSales = useMemo(() => {
-    // Non-admin: restrict to accessible plants only.
-    // While access is loading (null) show nothing to avoid flicker.
-    let base = sales;
-    if (!isAdmin) {
-      if (accessiblePlants === null) return [];
-      base = sales.filter((s) => accessiblePlants.has(s.unit));
-    }
-
-    if (!query.trim()) return base;
+    if (!query.trim()) return sales;
     const q = query.trim().toLowerCase();
-    return base.filter(
+    return sales.filter(
       (s) =>
-        String(s.id).includes(q)           ||
-        s.name?.toLowerCase().includes(q)  ||
-        s.mobile?.toLowerCase().includes(q)||
-        s.shop?.toLowerCase().includes(q)  ||
-        s.unit?.toLowerCase().includes(q)  ||
+        String(s.id).includes(q)            ||
+        s.name?.toLowerCase().includes(q)   ||
+        s.mobile?.toLowerCase().includes(q) ||
+        s.shop?.toLowerCase().includes(q)   ||
+        s.unit?.toLowerCase().includes(q)   ||
         s.soldBy?.toLowerCase().includes(q),
     );
-  }, [sales, query, isAdmin, accessiblePlants]);
-
-  // True while we wait for the access map to resolve (non-admin only).
-  const accessLoading = !isAdmin && accessiblePlants === null;
+  }, [sales, query]);
 
 
   // ── Modal helpers ─────────────────────────────────────────────────────────
@@ -873,21 +819,21 @@ const Home: React.FC = () => {
         }
         padded={false}
       >
-        {!isAdmin && accessiblePlants !== null && accessiblePlants.size === 0 ? (
+        {!isAdmin && !loading && sales.length === 0 ? (
           <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4, marginBottom: '0.75rem' }}>
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
               <path d="M7 11V7a5 5 0 0 1 10 0v4" />
             </svg>
-            <p style={{ fontWeight: 600, marginBottom: '0.25rem' }}>No plant access assigned</p>
-            <p style={{ fontSize: '0.83rem' }}>Ask your administrator to assign you to a plant.</p>
+            <p style={{ fontWeight: 600, marginBottom: '0.25rem' }}>No sales found</p>
+            <p style={{ fontSize: '0.83rem' }}>You may not be assigned to any plant yet — ask your administrator.</p>
           </div>
         ) : (
           <DataTable<Sale>
             data={filteredSales}
             columns={columns}
             rowKey={(r) => r.id}
-            loading={loading || accessLoading}
+            loading={loading}
             selectable
             selectedKeys={selectedKeys}
             onSelectionChange={setSelectedKeys}
