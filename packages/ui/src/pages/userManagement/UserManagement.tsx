@@ -21,8 +21,8 @@ import {
   Select,
   useToast,
 } from '../../components';
-import { buildAuthConfig, logout } from '../../lib/auth';
-import { EditIcon, PlusIcon, SearchIcon, TrashIcon, UserIcon } from '../../layout/nav-icons';
+import { buildAuthConfig, getUserId, logout } from '../../lib/auth';
+import { EditIcon, PlusIcon, SearchIcon, ShieldIcon, TrashIcon, UserIcon } from '../../layout/nav-icons';
 import './UserManagement.css';
 
 interface CatchError {
@@ -62,6 +62,9 @@ const UserManagement: React.FC = () => {
   const toast = useToast();
   const userService  = useMemo(() => new UserHelpService(), []);
   const plantService = useMemo(() => new PlantService(), []);
+
+  // The currently signed-in admin — used to prevent self-demotion.
+  const currentUserId = useMemo(() => getUserId(), []);
 
   // ── Data ──────────────────────────────────────────────────────────────────
 
@@ -264,6 +267,50 @@ const UserManagement: React.FC = () => {
     }
   };
 
+  // ── Change role ────────────────────────────────────────────────────────────
+
+  const [roleModal, setRoleModal] = useState<{ open: boolean; user: UserSummaryDto | null; selected: UserRole }>({
+    open: false, user: null, selected: UserRole.USER,
+  });
+  const [roleSaving, setRoleSaving] = useState(false);
+
+  const openRoleModal = (user: UserSummaryDto) => {
+    setRoleModal({
+      open: true,
+      user,
+      selected: (user.role.toUpperCase() === UserRole.ADMIN ? UserRole.ADMIN : UserRole.USER),
+    });
+  };
+
+  const handleRoleChange = async () => {
+    if (!roleModal.user) return;
+    if (roleModal.selected.toUpperCase() === roleModal.user.role.toUpperCase()) {
+      setRoleModal((p) => ({ ...p, open: false }));
+      return;
+    }
+    setRoleSaving(true);
+    try {
+      const res = await userService.updateUserRole(
+        roleModal.user.id,
+        roleModal.selected,
+        buildAuthConfig(),
+      );
+      if (res?.status) {
+        toast.success(`Role changed to ${roleModal.selected}`);
+        setRoleModal({ open: false, user: null, selected: UserRole.USER });
+        await fetchAll();
+      } else {
+        throw new Error(res?.internalMessage || 'Failed to update role');
+      }
+    } catch (err) {
+      const e = err as CatchError;
+      if (!handleAuthError(e))
+        toast.error(e.response?.data?.internalMessage || e.message || 'Failed to update role');
+    } finally {
+      setRoleSaving(false);
+    }
+  };
+
   // ── Assign plants modal ────────────────────────────────────────────────────
 
   const [assignOpen, setAssignOpen] = useState(false);
@@ -378,26 +425,41 @@ const UserManagement: React.FC = () => {
     {
       key: 'actions',
       title: 'Actions',
-      width: '200px',
-      render: (row) => (
-        <div className="um-actions">
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => openAssign(row)}
-          >
-            <EditIcon width={13} height={13} />
-            Assign Plants
-          </Button>
-          <Button
-            size="sm"
-            variant="danger"
-            onClick={() => setConfirmDelete({ open: true, user: row })}
-          >
-            <TrashIcon width={13} height={13} />
-          </Button>
-        </div>
-      ),
+      width: '260px',
+      render: (row) => {
+        const isSelf = row.id === currentUserId;
+        return (
+          <div className="um-actions">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => openRoleModal(row)}
+              disabled={isSelf}
+              title={isSelf ? 'You cannot change your own role' : 'Change role'}
+            >
+              <ShieldIcon width={13} height={13} />
+              Role
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => openAssign(row)}
+            >
+              <EditIcon width={13} height={13} />
+              Plants
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={() => setConfirmDelete({ open: true, user: row })}
+              disabled={isSelf}
+              title={isSelf ? 'You cannot delete your own account' : 'Delete user'}
+            >
+              <TrashIcon width={13} height={13} />
+            </Button>
+          </div>
+        );
+      },
     },
   ];
 
@@ -573,6 +635,44 @@ const UserManagement: React.FC = () => {
             })}
           </div>
         )}
+      </Modal>
+
+      {/* ── Change Role Modal ── */}
+      <Modal
+        open={roleModal.open}
+        onClose={() => setRoleModal({ open: false, user: null, selected: UserRole.USER })}
+        title={`Change Role — ${roleModal.user?.username ?? ''}`}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setRoleModal({ open: false, user: null, selected: UserRole.USER })}>
+              Cancel
+            </Button>
+            <Button onClick={handleRoleChange} loading={roleSaving}>
+              Save Role
+            </Button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', margin: 0 }}>
+            Current role: <strong style={{ color: 'var(--color-text)' }}>{roleModal.user?.role}</strong>
+          </p>
+          <Field label="New Role" required>
+            <Select
+              value={roleModal.selected}
+              onChange={(e) => setRoleModal((p) => ({ ...p, selected: e.target.value as UserRole }))}
+              options={[
+                { label: 'Operator (User)', value: UserRole.USER },
+                { label: 'Administrator', value: UserRole.ADMIN },
+              ]}
+            />
+          </Field>
+          {roleModal.selected === UserRole.ADMIN && roleModal.user?.role.toUpperCase() !== UserRole.ADMIN && (
+            <p style={{ color: 'var(--color-warning, #f59e0b)', fontSize: '0.82rem', margin: 0 }}>
+              Promoting to Admin grants full access to all plants, sales, and settings.
+            </p>
+          )}
+        </div>
       </Modal>
 
       {/* ── Delete Confirm Modal ── */}

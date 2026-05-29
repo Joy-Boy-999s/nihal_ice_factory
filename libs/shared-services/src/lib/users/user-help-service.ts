@@ -43,4 +43,8 @@ export class UserHelpService extends CommonAxiosService {
   async getAllUsers(config?: AxiosRequestConfig): Promise<CommonResponse> {
     return await this.axiosGetCall(this.getURLwithMainEndPoint('getAll'), config);
   }
+
+  async updateUserRole(userId: string, role: string, config?: AxiosRequestConfig): Promise<CommonResponse> {
+    return await this.axiosPatchCall(`/users/${userId}/role`, { role }, config);
+  }
 }

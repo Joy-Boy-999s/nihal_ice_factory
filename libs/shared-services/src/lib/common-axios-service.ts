@@ -80,4 +80,21 @@ export class CommonAxiosService {
       throw new Error(err.message || 'Unknown error occurred during DELETE call');
     }
   }
+
+  async axiosPatchCall(
+    urlEndPoint: string,
+    data?: object,
+    config?: AxiosRequestConfig,
+  ): Promise<CommonResponse> {
+    try {
+      const response = await AxiosInstance.patch(this.buildUrl(urlEndPoint), data, config);
+      if (response && response.status >= 200 && response.status < 300) {
+        return response.data as CommonResponse;
+      }
+      throw new Error(`Unexpected response status: ${response.status}`);
+    } catch (error) {
+      const err = error as NetworkError;
+      throw new Error(err.message || 'Unknown error occurred during PATCH call');
+    }
+  }
 }
