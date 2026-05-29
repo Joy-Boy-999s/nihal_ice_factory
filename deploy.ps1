@@ -16,7 +16,7 @@ $NGINX_DIR    = "C:\nginx"
 $BACKEND_PORT = 3000
 $PM2_APP_NAME = "ice-factory-api"
 
-$CONFIG_FILE  = "$APP_DIR\libs\shared-services\src\lib\config.ts"
+$UI_ENV_FILE  = "$APP_DIR\packages\ui\.env"
 $ENV_FILE     = "$APP_DIR\packages\services\.env"
 $BACKEND_DIST = "$APP_DIR\packages\services\dist\main.js"
 $FRONTEND_DIST= "$APP_DIR\dist\packages\ui\index.html"
@@ -43,19 +43,9 @@ Write-OK "Project root: $APP_DIR"
 # ─────────────────────────────────────────────────────────────
 # STEP 2 — Patch frontend API URL to point at this server
 # ─────────────────────────────────────────────────────────────
-Write-Step "Patching frontend API URL -> http://$SERVER_IP`:$BACKEND_PORT"
-if (-not (Test-Path $CONFIG_FILE)) {
-    Write-Host "ERROR: $CONFIG_FILE not found" -ForegroundColor Red
-    exit 1
-}
-$configContent = Get-Content $CONFIG_FILE -Raw
-if ($configContent -match "http://$([regex]::Escape($SERVER_IP)):$BACKEND_PORT") {
-    Write-OK "API URL already set to http://$SERVER_IP`:$BACKEND_PORT — skipping"
-} else {
-    $configContent = $configContent -replace "APP_INO_SERVICE_URL:\s*'[^']*'", "APP_INO_SERVICE_URL: 'http://$SERVER_IP`:$BACKEND_PORT'"
-    Set-Content -Path $CONFIG_FILE -Value $configContent -Encoding utf8 -NoNewline
-    Write-OK "config.ts updated"
-}
+Write-Step "Writing frontend .env -> VITE_API_URL=http://$SERVER_IP`:$BACKEND_PORT"
+Set-Content -Path $UI_ENV_FILE -Encoding utf8 -Value "VITE_API_URL=http://$SERVER_IP`:$BACKEND_PORT`n"
+Write-OK "packages/ui/.env written"
 
 # ─────────────────────────────────────────────────────────────
 # STEP 3 — Write .env for backend

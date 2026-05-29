@@ -9,6 +9,7 @@ export interface FieldProps {
   hint?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
+  style?: React.CSSProperties;
 }
 
 export const Field: React.FC<FieldProps> = ({
@@ -19,9 +20,10 @@ export const Field: React.FC<FieldProps> = ({
   hint,
   children,
   className = '',
+  style,
 }) => {
   return (
-    <div className={`ui-field ${className}`}>
+    <div className={`ui-field ${className}`} style={style}>
       {label && (
         <label className="ui-field__label" htmlFor={htmlFor}>
           {label}

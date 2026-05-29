@@ -10,8 +10,9 @@ const Home           = lazy(() => import('../pages/home/home'));
 const Dashboard      = lazy(() => import('../pages/dashboard/dashboard'));
 const AddSale        = lazy(() => import('../pages/addSales/addsale'));
 const IcePriceMaster = lazy(() => import('../pages/icePriceMaster/IcePriceMaster'));
-const PlantMaster    = lazy(() => import('../pages/plantMaster/PlantMaster'));
-const NotFoundPage   = lazy(() => import('../pages/errors/NotFoundPage'));
+const PlantMaster      = lazy(() => import('../pages/plantMaster/PlantMaster'));
+const UserManagement   = lazy(() => import('../pages/userManagement/UserManagement'));
+const NotFoundPage     = lazy(() => import('../pages/errors/NotFoundPage'));
 const UnauthorizedPage = lazy(() => import('../pages/errors/UnauthorizedPage'));
 
 const LazyPage: React.FC<{ children: React.ReactNode; label: string }> = ({
@@ -109,6 +110,14 @@ const AppRoutes: React.FC = () => {
               element={
                 <LazyPage label="Loading plant master...">
                   <PlantMaster />
+                </LazyPage>
+              }
+            />
+            <Route
+              path="/user-management"
+              element={
+                <LazyPage label="Loading user management...">
+                  <UserManagement />
                 </LazyPage>
               }
             />
