@@ -82,6 +82,23 @@ export function useAuth(): AuthSnapshot {
   return useSyncExternalStore(subscribe, getCachedSnapshot, getCachedSnapshot);
 }
 
+export function getUserId(): string | null {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    // JWT payload is base64url-encoded — replace URL-safe chars before decoding
+    const json = atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'));
+    const payload = JSON.parse(json) as Record<string, unknown>;
+    // NestJS default: userId in 'sub'
+    const id = payload['sub'] ?? payload['userId'] ?? payload['id'];
+    return typeof id === 'string' ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 export function buildAuthConfig() {
   const token = getToken();
   return {

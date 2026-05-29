@@ -135,7 +135,7 @@ export function DataTable<T>({
                         {col.render
                           ? col.render(row, (currentPage - 1) * pageSize + idx)
                           : col.accessor
-                          ? String((row as any)[col.accessor] ?? '')
+                          ? String(row[col.accessor] ?? '')
                           : null}
                       </td>
                     ))}

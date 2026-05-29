@@ -10,6 +10,8 @@ import { SalesController } from './sales.controller';
 import { SalesService } from './sales.service';
 import { SalesRepository } from './repository/sales.repository';
 import { GenericTransactionManager } from '../../database/trasanction-manager';
+import { IceTypeModule } from '../IcePrice/ice-price.module';
+import { PlantModule } from '../Plant/plant.module';
 
 @Module({
   imports: [
@@ -25,6 +27,8 @@ import { GenericTransactionManager } from '../../database/trasanction-manager';
     }),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     CacheModule.register({ isGlobal: true, ttl: 300 }),
+    IceTypeModule,
+    PlantModule,
   ],
   controllers: [SalesController],
   providers: [SalesService, GenericTransactionManager, SalesRepository],

@@ -13,9 +13,9 @@ axiosRetry(AxiosInstance, {
         return configVariables.APP_REQ_RETRY_DELAY;// time interval between retries
     },
     retryCondition: (error: AxiosError) => {
-        const { response, code } :any= error;
+        const { response, code } = error;
         const { status } = response || {};
-        if (RETRY_CODES?.includes(code)) return true;
+        if (code && RETRY_CODES?.includes(code)) return true;
         if (APP_REQ_RETRY_STATUS_CODES?.includes(`${status}`)) return true;
         return false;
     },

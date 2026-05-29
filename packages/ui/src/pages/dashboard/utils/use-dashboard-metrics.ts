@@ -51,7 +51,7 @@ export const useDashboardMetrics = (): DashboardMetricsState => {
         setLastUpdated(formatTime(data.generatedAt));
         setError('');
       } catch (err) {
-        const info = normalizeError(err);
+        const info = normalizeError(err as Error);
         if (info.status === 401) {
           logout();
           navigate('/login', { replace: true });
@@ -97,7 +97,7 @@ export const useDashboardMetrics = (): DashboardMetricsState => {
           setLastUpdated(formatTime(data.generatedAt));
           setError('');
         } catch (parseError) {
-          const parsed = normalizeError(parseError);
+          const parsed = normalizeError(parseError as Error);
           setError(parsed.message);
         }
       };
@@ -143,7 +143,7 @@ export const useDashboardMetrics = (): DashboardMetricsState => {
             reconnectTimer = window.setTimeout(connect, reconnectIn);
           };
         } catch (err) {
-          const parsed = normalizeError(err);
+          const parsed = normalizeError(err as Error);
           setError(parsed.message);
         }
       };

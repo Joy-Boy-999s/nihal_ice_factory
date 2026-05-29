@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { In } from 'typeorm';
 import {
   CommonResponse,
   DashboardChartSeriesDto,
@@ -6,50 +7,146 @@ import {
   DashboardStatDto,
   SaleUpdateDto,
 } from '@nihal-ice-factory/shared-models';
-import { CreateSaleDto } from './dto/create-sale.dto';
+import { CreateSaleDto, SaleItemInput } from './dto/create-sale.dto';
 import { GenericTransactionManager } from '../../database/trasanction-manager';
 import { SalesRepository } from './repository/sales.repository';
-import { Sale } from './entities/sale.entity';
+import { Sale, SaleItemSnapshot } from './entities/sale.entity';
+import { IceTypeService } from '../IcePrice/ice-price.service';
+import { IceType } from '../IcePrice/entities/ice-price.entity';
+import { PlantService } from '../Plant/plant.service';
 
 @Injectable()
 export class SalesService {
   constructor(
     private readonly salesRepository: SalesRepository,
     private readonly transactionManager: GenericTransactionManager,
+    private readonly iceTypeService: IceTypeService,
+    private readonly plantService: PlantService,
   ) {}
 
-  private calculateTotalAmount(cans: number, blocks: number, pieces: number, discount = 0): number {
-    const pricePerCan = 240;
-    const pricePerBlock = 80;
-    const pricePerPiece = 20;
-    const total = cans * pricePerCan + blocks * pricePerBlock + pieces * pricePerPiece;
-    return total - discount;
+  // ── Plant-access helpers ─────────────────────────────────────────────────
+
+  /**
+   * Returns plant names the user has been assigned to.
+   * Always returns the full list for ADMIN (pass isAdmin=true to skip the DB lookup).
+   */
+  private async getAccessiblePlantNames(userId: string): Promise<string[]> {
+    const plants = await this.plantService.getAccessible(userId, false);
+    return plants.map((p) => p.plantName);
   }
 
-  private calculateTotalCans(cans: number, blocks: number, pieces: number): number {
-    return cans + blocks / 3 + pieces / 12;
+  /**
+   * Returns a 403 CommonResponse if the user (non-admin) cannot access plantName.
+   * Returns null when access is granted.
+   */
+  private async checkPlantAccess(
+    plantName: string,
+    userId: string,
+    isAdmin: boolean,
+  ): Promise<CommonResponse | null> {
+    if (isAdmin) return null;
+    const names = await this.getAccessiblePlantNames(userId);
+    if (!names.includes(plantName)) {
+      return new CommonResponse(
+        false,
+        403,
+        `Access denied: you are not assigned to plant "${plantName}"`,
+        null,
+      );
+    }
+    return null;
   }
 
-  async create(createSaleDto: CreateSaleDto): Promise<CommonResponse> {
+  // ── Item-totals builder ──────────────────────────────────────────────────
+
+  private async buildSaleItems(
+    items: SaleItemInput[],
+    discount: number,
+    plantUnit: string,
+  ): Promise<{ snapshots: SaleItemSnapshot[]; totalUnits: number; totalAmount: number }> {
+    const activeTypes = await this.iceTypeService.getActiveByPlant(plantUnit);
+
+    if (activeTypes.length === 0) {
+      throw new Error(
+        `No active ice types configured for plant "${plantUnit}". ` +
+        'Please add entries in the Ice Type Master first.',
+      );
+    }
+
+    const typeMap = new Map<number, IceType>(activeTypes.map((t) => [t.id, t]));
+    const snapshots: SaleItemSnapshot[] = [];
+    let totalUnits = 0;
+    let subtotalBeforeDiscount = 0;
+
+    for (const item of items) {
+      const iceType = typeMap.get(item.iceTypeId);
+      if (!iceType) {
+        throw new Error(
+          `Ice type ID ${item.iceTypeId} is not active for plant "${plantUnit}".`,
+        );
+      }
+      const price    = Number(iceType.price);
+      const subtotal = item.quantity * price;
+
+      snapshots.push({
+        iceTypeId:   iceType.id,
+        iceTypeName: iceType.iceTypeName,
+        iceTypeCode: iceType.iceTypeCode,
+        quantity:    item.quantity,
+        price,
+        subtotal,
+      });
+
+      totalUnits             += item.quantity;
+      subtotalBeforeDiscount += subtotal;
+    }
+
+    const nonZeroItems = snapshots.filter((s) => s.quantity > 0);
+    if (nonZeroItems.length === 0) {
+      throw new Error('At least one item must have a quantity greater than zero.');
+    }
+
+    const totalAmount = Math.max(0, subtotalBeforeDiscount - discount);
+    return { snapshots, totalUnits, totalAmount };
+  }
+
+  // ── CRUD ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Create a sale.
+   * Non-admin users must be assigned to the target plant.
+   */
+  async create(
+    createSaleDto: CreateSaleDto,
+    userId: string,
+    isAdmin: boolean,
+  ): Promise<CommonResponse> {
+    // Enforce plant access BEFORE opening a transaction.
+    const denied = await this.checkPlantAccess(createSaleDto.unit, userId, isAdmin);
+    if (denied) return denied;
+
     await this.transactionManager.startTransaction();
     try {
       const saleRepo = this.transactionManager.getRepository(this.salesRepository);
 
-      const totalAmount = this.calculateTotalAmount(
-        createSaleDto.cans,
-        createSaleDto.blocks,
-        createSaleDto.pieces,
-      );
-      const totalCans = this.calculateTotalCans(
-        createSaleDto.cans,
-        createSaleDto.blocks,
-        createSaleDto.pieces,
+      const { snapshots, totalUnits, totalAmount } = await this.buildSaleItems(
+        createSaleDto.items,
+        createSaleDto.discount ?? 0,
+        createSaleDto.unit,
       );
 
       const sale = saleRepo.create({
-        ...createSaleDto,
+        date:        createSaleDto.date,
+        time:        createSaleDto.time,
+        unit:        createSaleDto.unit,
+        name:        createSaleDto.name,
+        mobile:      createSaleDto.mobile,
+        shop:        createSaleDto.shop,
+        soldBy:      createSaleDto.soldBy,
+        discount:    createSaleDto.discount ?? 0,
+        items:       snapshots,
+        totalUnits,
         totalAmount,
-        totalCans,
       });
 
       const savedSale = await saleRepo.save(sale);
@@ -62,37 +159,46 @@ export class SalesService {
     }
   }
 
+  /** Update a sale. Admin-only (enforced at the controller by RolesGuard). */
   async update(saleId: number, updateSaleDto: SaleUpdateDto): Promise<CommonResponse> {
     await this.transactionManager.startTransaction();
     try {
-      // Use salesRepository directly here
       const sale = await this.salesRepository.findOne({ where: { id: saleId } });
+      if (!sale) throw new Error('Sale not found');
 
-      if (!sale) {
-        throw new Error('Sale not found');
+      let updatedItems  = sale.items;
+      let updatedUnits  = sale.totalUnits;
+      let updatedAmount = sale.totalAmount;
+
+      if (updateSaleDto.items && updateSaleDto.items.length > 0) {
+        const plantUnit = updateSaleDto.unit ?? sale.unit;
+        const { snapshots, totalUnits, totalAmount } = await this.buildSaleItems(
+          updateSaleDto.items,
+          updateSaleDto.discount ?? sale.discount ?? 0,
+          plantUnit,
+        );
+        updatedItems  = snapshots;
+        updatedUnits  = totalUnits;
+        updatedAmount = totalAmount;
       }
-
-      const totalAmount = this.calculateTotalAmount(
-        updateSaleDto.cans || sale.cans,
-        updateSaleDto.blocks || sale.blocks,
-        updateSaleDto.pieces || sale.pieces,
-      );
-      const totalCans = this.calculateTotalCans(
-        updateSaleDto.cans || sale.cans,
-        updateSaleDto.blocks || sale.blocks,
-        updateSaleDto.pieces || sale.pieces,
-      );
 
       const updatedSale = this.salesRepository.create({
         ...sale,
-        ...updateSaleDto,
-        totalAmount,
-        totalCans,
+        ...(updateSaleDto.date    !== undefined && { date:    updateSaleDto.date    }),
+        ...(updateSaleDto.time    !== undefined && { time:    updateSaleDto.time    }),
+        ...(updateSaleDto.unit    !== undefined && { unit:    updateSaleDto.unit    }),
+        ...(updateSaleDto.name    !== undefined && { name:    updateSaleDto.name    }),
+        ...(updateSaleDto.mobile  !== undefined && { mobile:  updateSaleDto.mobile  }),
+        ...(updateSaleDto.shop    !== undefined && { shop:    updateSaleDto.shop    }),
+        ...(updateSaleDto.soldBy  !== undefined && { soldBy:  updateSaleDto.soldBy  }),
+        ...(updateSaleDto.discount !== undefined && { discount: updateSaleDto.discount }),
+        items:       updatedItems,
+        totalUnits:  updatedUnits,
+        totalAmount: updatedAmount,
       });
 
       const savedSale = await this.salesRepository.save(updatedSale);
       await this.transactionManager.commitTransaction();
-
       return new CommonResponse(true, 200, 'Sale updated successfully', savedSale);
     } catch (error) {
       await this.transactionManager.rollbackTransaction();
@@ -101,22 +207,34 @@ export class SalesService {
     }
   }
 
-  async getAllSales(): Promise<CommonResponse> {
-    await this.transactionManager.startTransaction();
+  /**
+   * Return all sales.
+   * ADMIN  → entire table.
+   * USER   → only sales whose unit (plant name) the user is assigned to.
+   *          Resolved via a single IN query — data never leaves the DB for inaccessible rows.
+   */
+  async getAllSales(userId: string, isAdmin: boolean): Promise<CommonResponse> {
     try {
-      const saleRepo = this.transactionManager.getRepository(this.salesRepository);
+      let sales: Sale[];
 
-      const sales = await saleRepo.find();
+      if (isAdmin) {
+        sales = await this.salesRepository.find();
+      } else {
+        const names = await this.getAccessiblePlantNames(userId);
+        if (names.length === 0) {
+          return new CommonResponse(true, 200, 'Sales fetched successfully', []);
+        }
+        sales = await this.salesRepository.find({ where: { unit: In(names) } });
+      }
 
-      await this.transactionManager.commitTransaction();
       return new CommonResponse(true, 200, 'Sales fetched successfully', sales);
     } catch (error) {
-      await this.transactionManager.rollbackTransaction();
       const message = error instanceof Error ? error.message : 'Unknown error occurred';
       return new CommonResponse(false, 500, message, null);
     }
   }
 
+  /** Delete one sale. Admin-only (enforced at the controller by RolesGuard). */
   async deleteOne(id: number): Promise<CommonResponse> {
     await this.transactionManager.startTransaction();
     try {
@@ -136,14 +254,12 @@ export class SalesService {
     }
   }
 
-  /**
-   * Delete multiple sales by IDs
-   */
+  /** Delete multiple sales. Admin-only (enforced at the controller by RolesGuard). */
   async deleteMany(ids: number[]): Promise<CommonResponse> {
     await this.transactionManager.startTransaction();
     try {
       const saleRepo = this.transactionManager.getRepository(this.salesRepository);
-      const sales = await saleRepo.find({ where: ids.map(id => ({ id })) });
+      const sales = await saleRepo.find({ where: ids.map((id) => ({ id })) });
       if (sales.length !== ids.length) {
         await this.transactionManager.rollbackTransaction();
         return new CommonResponse(false, 404, 'One or more sales not found', null);
@@ -158,42 +274,74 @@ export class SalesService {
     }
   }
 
-  async findOne(id: number): Promise<CommonResponse> {
+  /**
+   * Fetch a single sale by ID.
+   * Non-admin users can only fetch sales from their assigned plants.
+   */
+  async findOne(id: number, userId: string, isAdmin: boolean): Promise<CommonResponse> {
     try {
       const sale = await this.salesRepository.findOne({ where: { id } });
-      if (!sale) {
-        throw new NotFoundException(`Sale with ID ${id} not found`);
-      }
+      if (!sale) throw new NotFoundException(`Sale with ID ${id} not found`);
+
+      const denied = await this.checkPlantAccess(sale.unit, userId, isAdmin);
+      if (denied) return denied;
+
       return new CommonResponse(true, 200, 'Sale fetched successfully', sale);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error occurred';
-      return new CommonResponse(false, error instanceof NotFoundException ? 404 : 500, message, null);
+      return new CommonResponse(
+        false,
+        error instanceof NotFoundException ? 404 : 500,
+        message,
+        null,
+      );
     }
   }
-
-  
 
   async remove(id: number): Promise<CommonResponse> {
-    await this.transactionManager.startTransaction();
+    return this.deleteOne(id);
+  }
+
+  // ── Print data ───────────────────────────────────────────────────────────
+
+  /**
+   * Return invoice print data for a sale.
+   * Non-admin users can only print sales from their assigned plants.
+   */
+  async getPrintData(id: number, userId: string, isAdmin: boolean): Promise<CommonResponse> {
     try {
-      const saleRepo = this.transactionManager.getRepository(this.salesRepository);
+      const sale = await this.salesRepository.findOne({ where: { id } });
+      if (!sale) throw new NotFoundException(`Sale with ID ${id} not found`);
 
-      const sale = await saleRepo.findOne({ where: { id } });
-      if (!sale) {
-        await this.transactionManager.rollbackTransaction();
-        return new CommonResponse(false, 404, 'Sale not found', null);
-      }
+      const denied = await this.checkPlantAccess(sale.unit, userId, isAdmin);
+      if (denied) return denied;
 
-      await saleRepo.remove(sale);
-      await this.transactionManager.commitTransaction();
-      return new CommonResponse(true, 200, 'Sale deleted successfully', null);
+      const printData = {
+        ...sale,
+        itemBreakdown: sale.items.map((item) => ({
+          iceTypeName: item.iceTypeName,
+          iceTypeCode: item.iceTypeCode,
+          quantity:    item.quantity,
+          price:       item.price,
+          subtotal:    item.subtotal,
+        })),
+      };
+
+      return new CommonResponse(true, 200, 'Print data fetched successfully', printData);
     } catch (error) {
-      await this.transactionManager.rollbackTransaction();
       const message = error instanceof Error ? error.message : 'Unknown error occurred';
-      return new CommonResponse(false, 500, message, null);
+      return new CommonResponse(
+        false,
+        error instanceof NotFoundException ? 404 : 500,
+        message,
+        null,
+      );
     }
   }
 
+  // ── Dashboard ────────────────────────────────────────────────────────────
+
+  /** Dashboard metrics — admin only (enforced at the controller). */
   async getDashboardMetrics(): Promise<CommonResponse> {
     try {
       const sales = await this.salesRepository.find();
@@ -206,13 +354,11 @@ export class SalesService {
   }
 
   private buildDashboardMetrics(sales: Sale[], now: Date): DashboardMetricsDto {
-    const stats = this.buildDashboardStats(sales, now);
-    const charts = this.buildDashboardCharts(sales, now);
     return {
       generatedAt: now.toISOString(),
       currency: 'INR',
-      stats,
-      charts,
+      stats:  this.buildDashboardStats(sales, now),
+      charts: this.buildDashboardCharts(sales, now),
     };
   }
 
@@ -223,8 +369,8 @@ export class SalesService {
   private isSameDay(a: Date, b: Date): boolean {
     return (
       a.getFullYear() === b.getFullYear() &&
-      a.getMonth() === b.getMonth() &&
-      a.getDate() === b.getDate()
+      a.getMonth()    === b.getMonth()    &&
+      a.getDate()     === b.getDate()
     );
   }
 
@@ -262,13 +408,13 @@ export class SalesService {
     const weekStart = this.getWeekStart(now);
 
     const todaySales = sales.filter((s) => this.isSameDay(this.parseSaleDate(s.date), now));
-    const weekSales = sales.filter((s) => {
+    const weekSales  = sales.filter((s) => {
       const d = this.parseSaleDate(s.date);
       return d >= weekStart && d <= now;
     });
     const monthSales = sales.filter((s) => this.isSameMonth(this.parseSaleDate(s.date), now));
 
-    const prevMonthRef = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevMonthRef   = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const prevMonthSales = sales.filter((s) =>
       this.isSameMonth(this.parseSaleDate(s.date), prevMonthRef),
     );
@@ -276,9 +422,9 @@ export class SalesService {
     const sumAmount = (rows: Sale[]): number =>
       rows.reduce((total, row) => total + Number(row.totalAmount || 0), 0);
 
-    const todayTotal = sumAmount(todaySales);
-    const weekTotal = sumAmount(weekSales);
-    const monthTotal = sumAmount(monthSales);
+    const todayTotal     = sumAmount(todaySales);
+    const weekTotal      = sumAmount(weekSales);
+    const monthTotal     = sumAmount(monthSales);
     const prevMonthTotal = sumAmount(prevMonthSales);
 
     const uniqueCustomers = new Set(
@@ -322,15 +468,14 @@ export class SalesService {
   }
 
   private buildDashboardCharts(sales: Sale[], now: Date): DashboardChartSeriesDto[] {
-    const monthDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const monthDays  = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     const monthSeries = new Array<number>(monthDays).fill(0);
-
-    const weekStart = this.getWeekStart(now);
-    const weekSeries = new Array<number>(7).fill(0);
-    const yearSeries = new Array<number>(12).fill(0);
+    const weekSeries  = new Array<number>(7).fill(0);
+    const yearSeries  = new Array<number>(12).fill(0);
+    const weekStart   = this.getWeekStart(now);
 
     for (const sale of sales) {
-      const d = this.parseSaleDate(sale.date);
+      const d      = this.parseSaleDate(sale.date);
       const amount = Number(sale.totalAmount || 0);
 
       if (d.getFullYear() === now.getFullYear()) {
@@ -345,62 +490,14 @@ export class SalesService {
       }
     }
 
-    const monthLabels = Array.from({ length: monthDays }, (_, idx) => `${idx + 1}`);
-    const yearLabels = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
-    const weekLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const monthLabels = Array.from({ length: monthDays }, (_, i) => `${i + 1}`);
+    const yearLabels  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const weekLabels  = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
     return [
-      {
-        key: 'month',
-        title: "This Month's Sales",
-        kind: 'bar',
-        labels: monthLabels,
-        values: monthSeries,
-        accent: '#0ea5e9',
-      },
-      {
-        key: 'year',
-        title: "This Year's Sales",
-        kind: 'line',
-        labels: yearLabels,
-        values: yearSeries,
-        accent: '#10b981',
-      },
-      {
-        key: 'week',
-        title: "This Week's Sales",
-        kind: 'bar',
-        labels: weekLabels,
-        values: weekSeries,
-        accent: '#f97316',
-      },
+      { key: 'month', title: "This Month's Sales", kind: 'bar',  labels: monthLabels, values: monthSeries, accent: '#0ea5e9' },
+      { key: 'year',  title: "This Year's Sales",  kind: 'line', labels: yearLabels,  values: yearSeries,  accent: '#10b981' },
+      { key: 'week',  title: "This Week's Sales",  kind: 'bar',  labels: weekLabels,  values: weekSeries,  accent: '#f97316' },
     ];
-  }
-
-  async getPrintData(id: number): Promise<CommonResponse> {
-    try {
-      const sale = await this.salesRepository.findOne({ where: { id } });
-      if (!sale) {
-        throw new NotFoundException(`Sale with ID ${id} not found`);
-      }
-
-      const totalCans = this.calculateTotalCans(sale.cans, sale.blocks, sale.pieces);
-
-      const printData = {
-        ...sale,
-        totalCans: totalCans.toFixed(2),
-        canCost: sale.cans * 240,
-        blockCost: sale.blocks * 80,
-        pieceCost: sale.pieces * 20,
-      };
-
-      return new CommonResponse(true, 200, 'Print data fetched successfully', printData);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error occurred';
-      return new CommonResponse(false, error instanceof NotFoundException ? 404 : 500, message, null);
-    }
   }
 }
