@@ -11,17 +11,16 @@ import {
   formatCurrency,
   getIceTypesForPlant,
 } from '../../lib/pricing';
+import { createInitialForm } from './utils/constants';
+import { isValidNumericInput, validateSaleForm } from './utils/form-helpers';
+import { SaleForm, SaleItem } from './model/types';
+import './styles/addsale.css';
 
 /** Typed shape for catch-block errors. */
 interface CatchError {
   response?: { status?: number; data?: { internalMessage?: string } };
   message?: string;
 }
-
-import { createInitialForm } from './utils/constants';
-import { isValidNumericInput, validateSaleForm } from './utils/form-helpers';
-import { SaleForm, SaleItem } from './model/types';
-import './styles/addsale.css';
 
 const SaleFormSection = lazy(() => import('./components/SaleFormSection'));
 const SaleTotalsPreview = lazy(() => import('./components/SaleTotalsPreview'));

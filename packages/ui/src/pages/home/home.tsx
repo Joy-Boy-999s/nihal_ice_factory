@@ -30,6 +30,20 @@ import {
   formatCurrency,
   getIceTypesForPlant,
 } from '../../lib/pricing';
+import {
+  PlusIcon,
+  DownloadIcon,
+  SearchIcon,
+  EditIcon,
+  PrinterIcon,
+  TrashIcon,
+  CalendarIcon,
+  ClockIcon,
+  PersonIcon,
+  PhoneIcon,
+  StoreIcon,
+} from '../../layout/nav-icons';
+import './home.css';
 
 // ── Typed helpers ────────────────────────────────────────────────────────────
 
@@ -126,23 +140,6 @@ const emptyForm = (): SaleForm => ({
   discount: '0',
   soldBy:   '',
 });
-
-// ── Icons ────────────────────────────────────────────────────────────────────
-
-import {
-  PlusIcon,
-  DownloadIcon,
-  SearchIcon,
-  EditIcon,
-  PrinterIcon,
-  TrashIcon,
-  CalendarIcon,
-  ClockIcon,
-  PersonIcon,
-  PhoneIcon,
-  StoreIcon,
-} from '../../layout/nav-icons';
-import './home.css';
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -259,12 +256,6 @@ const Home: React.FC = () => {
     );
   }, [sales, query]);
 
-  // ── Live items for the edit modal (derived from selected plant) ───────────
-
-  const modalPlantTypes = useMemo(
-    () => getIceTypesForPlant(apiTypes, form.unit || undefined),
-    [apiTypes, form.unit],
-  );
 
   // ── Modal helpers ─────────────────────────────────────────────────────────
 

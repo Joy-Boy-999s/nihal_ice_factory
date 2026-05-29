@@ -8,20 +8,6 @@ import {
   PlantDto,
   ResponsePayloadRecord,
 } from '@nihal-ice-factory/shared-models';
-
-/** Minimal typed shape for catch-block errors. */
-interface CatchError { message?: string; response?: { status?: number } }
-
-function unwrapData<T>(raw: ResponsePayloadRecord | null | undefined): T | null {
-  if (!raw) return null;
-  const inner = raw['data'] as ResponsePayloadRecord | T | undefined;
-  if (inner !== undefined && inner !== null) {
-    const nested = (inner as ResponsePayloadRecord)['data'] as T | undefined;
-    return nested !== undefined ? nested : (inner as T);
-  }
-  return raw as T;
-}
-
 import {
   Button,
   Card,
@@ -37,6 +23,19 @@ import {
 import { buildAuthConfig, logout, useAuth } from '../../lib/auth';
 import { EditIcon, PlusIcon, SearchIcon, TrashIcon } from '../../layout/nav-icons';
 import './IcePriceMaster.css';
+
+/** Minimal typed shape for catch-block errors. */
+interface CatchError { message?: string; response?: { status?: number } }
+
+function unwrapData<T>(raw: ResponsePayloadRecord | null | undefined): T | null {
+  if (!raw) return null;
+  const inner = raw['data'] as ResponsePayloadRecord | T | undefined;
+  if (inner !== undefined && inner !== null) {
+    const nested = (inner as ResponsePayloadRecord)['data'] as T | undefined;
+    return nested !== undefined ? nested : (inner as T);
+  }
+  return raw as T;
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────
 

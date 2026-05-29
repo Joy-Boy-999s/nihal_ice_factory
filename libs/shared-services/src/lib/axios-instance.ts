@@ -15,7 +15,7 @@ axiosRetry(AxiosInstance, {
     retryCondition: (error: AxiosError) => {
         const { response, code } = error;
         const { status } = response || {};
-        if (RETRY_CODES?.includes(code)) return true;
+        if (code && RETRY_CODES?.includes(code)) return true;
         if (APP_REQ_RETRY_STATUS_CODES?.includes(`${status}`)) return true;
         return false;
     },
