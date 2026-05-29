@@ -174,12 +174,12 @@ export class UserService {
       }
 
       const validRoles = Object.values(UserRole) as string[];
-      if (!validRoles.includes(role.toUpperCase())) {
+      if (!validRoles.includes(role.toLowerCase())) {
         return new CommonResponse(false, 400, `Invalid role. Must be one of: ${validRoles.join(', ')}`, null);
       }
 
-      await this.userRepository.update(userId, { role: role.toUpperCase() as UserRole });
-      return new CommonResponse(true, 200, `Role updated to ${role.toUpperCase()} successfully`, null);
+      await this.userRepository.update(userId, { role: role.toLowerCase() as UserRole });
+      return new CommonResponse(true, 200, `Role updated to ${role.toLowerCase()} successfully`, null);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Error updating role';
       return new CommonResponse(false, 500, message, null);
