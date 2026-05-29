@@ -29,7 +29,7 @@ export class UserController {
     try {
       return await this.userService.createUser(reqModel);
     } catch (error) {
-      return new CommonResponse(false, 1, 'User Creation Failed', error);
+      return new CommonResponse(false, 1, 'User Creation Failed');
     }
   }
 
@@ -40,7 +40,7 @@ export class UserController {
     try {
       return await this.userService.loginUser(userLoginDto);
     } catch (error) {
-      return new CommonResponse(false, 1, 'Error logging in user', error);
+      return new CommonResponse(false, 1, 'Error logging in user');
     }
   }
 
@@ -51,7 +51,7 @@ export class UserController {
     try {
       return await this.userService.sendResetPasswordEmail(reqModel);
     } catch (error) {
-      return new CommonResponse(false, 1, 'Error sending OTP', error);
+      return new CommonResponse(false, 1, 'Error sending OTP');
     }
   }
 
@@ -62,7 +62,7 @@ export class UserController {
     try {
       return await this.userService.resetPassword(reqModel);
     } catch (error) {
-      return new CommonResponse(false, 1, 'Error resetting password', error);
+      return new CommonResponse(false, 1, 'Error resetting password');
     }
   }
 
@@ -77,7 +77,7 @@ export class UserController {
     try {
       return await this.userService.getUserById(reqModel);
     } catch (error) {
-      return new CommonResponse(false, 1, 'Error fetching user', error);
+      return new CommonResponse(false, 1, 'Error fetching user');
     }
   }
 
@@ -90,7 +90,7 @@ export class UserController {
     try {
       return await this.userService.updateUser(reqModel);
     } catch (error) {
-      return new CommonResponse(false, 1, 'Error updating user', error);
+      return new CommonResponse(false, 1, 'Error updating user');
     }
   }
 
@@ -105,7 +105,7 @@ export class UserController {
     try {
       return await this.userService.getAllUsers();
     } catch (error) {
-      return new CommonResponse(false, 1, 'Error fetching users', error);
+      return new CommonResponse(false, 1, 'Error fetching users');
     }
   }
 
@@ -119,7 +119,7 @@ export class UserController {
     try {
       return await this.userService.deleteUser(reqModel);
     } catch (error) {
-      return new CommonResponse(false, 1, 'Error deleting user', error);
+      return new CommonResponse(false, 1, 'Error deleting user');
     }
   }
 
