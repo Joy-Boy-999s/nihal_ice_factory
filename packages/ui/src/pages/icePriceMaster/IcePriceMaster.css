@@ -276,3 +276,71 @@
   0%   { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+/* ── Weight badge ── */
+.ipm-weight-badge {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  color: var(--color-primary);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── Mode toggle (Single Plant / All Plants) ── */
+.ipm-mode-toggle {
+  display: flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  overflow: hidden;
+  margin-bottom: 1.25rem;
+  width: fit-content;
+}
+
+.ipm-mode-btn {
+  flex: 1;
+  padding: 0.45rem 1.1rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.ipm-mode-btn--active {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+/* ── All-plants price grid ── */
+.ipm-plant-price-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.ipm-plant-price-row {
+  display: grid;
+  grid-template-columns: 1fr 140px;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 6px);
+  background: var(--color-surface);
+}
+
+.ipm-plant-price-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text);
+}

@@ -54,7 +54,7 @@ const SalePreviewModal: React.FC<SalePreviewModalProps> = ({
       open={open}
       onClose={onEdit}
       size="md"
-      title="Review sale before saving"
+      title="Review Sale"
       closeOnBackdrop={!saving}
       footer={
         <>

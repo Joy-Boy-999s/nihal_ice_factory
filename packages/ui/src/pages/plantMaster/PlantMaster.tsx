@@ -479,7 +479,7 @@ const PlantMaster: React.FC = () => {
     <div className="pm-page">
       <PageHeader
         title="Plant Master"
-        subtitle="Manage factory plants and assign users. Admins always see all plants."
+        subtitle="Manage factory plants and control which operators can access each one."
         actions={
           <Button
             id="add-plant-btn"
@@ -578,7 +578,7 @@ const PlantMaster: React.FC = () => {
               autoFocus
             />
             <p className="pm-form-hint">
-              Human-readable name used in Ice Type Master and Sale forms.
+              This name will appear in ice type setup and sale entry forms.
             </p>
           </Field>
         </div>
@@ -691,7 +691,7 @@ const PlantMaster: React.FC = () => {
                   </Button>
                 </div>
                 <p className="pm-form-hint" style={{ marginTop: 6 }}>
-                  ADMIN users always have access to all plants and do not appear here.
+                  Administrators automatically have access to all plants and are not listed here.
                 </p>
               </div>
             </>

@@ -182,10 +182,10 @@ const AddSale: React.FC = () => {
   const priceHint = typesLoading
     ? 'Loading ice types…'
     : !form.unit
-    ? 'Select a factory plant to load ice types and prices.'
+    ? 'Select a plant to see available ice types and prices.'
     : plantTypes.length === 0
-    ? `No ice types configured for "${form.unit}". Please set up the Ice Type Master first.`
-    : `${plantTypes.length} ice type${plantTypes.length > 1 ? 's' : ''} loaded for ${form.unit}.`;
+    ? `No ice types found for "${form.unit}". Set up ice types in Ice Price Master first.`
+    : `${plantTypes.length} ice type${plantTypes.length > 1 ? 's' : ''} available for ${form.unit}.`;
 
   const canSubmit = !typesLoading && plantTypes.length > 0;
 
@@ -193,7 +193,7 @@ const AddSale: React.FC = () => {
     <div className="add-sale-page">
       <PageHeader
         title="Add Sale"
-        subtitle="Create a new invoice-ready sale record for your ERP workflow"
+        subtitle="Record a new sale and generate an instant invoice"
         actions={
           <Button variant="secondary" onClick={() => navigate('/')}>
             Back to Sales
@@ -228,7 +228,7 @@ const AddSale: React.FC = () => {
             <Suspense fallback={<div className="add-sale-lazy-placeholder" aria-hidden />}>
               <SaleFormSection
                 title="Customer Information"
-                description="Capture basic contact and shop details"
+                description="Enter the customer's contact and shop details"
               >
                 <div className="add-sale-grid add-sale-grid--3">
                   <Field label="Name" required error={errors.name}>
@@ -265,7 +265,7 @@ const AddSale: React.FC = () => {
                 description={
                   plantTypes.length > 0
                     ? `Enter quantities for each ice type at ${form.unit}`
-                    : 'Select a factory plant first to load ice types'
+                    : 'Select a plant first to load available ice types'
                 }
               >
                 <div className="add-sale-grid add-sale-grid--3">

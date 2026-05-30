@@ -755,7 +755,7 @@ const Home: React.FC = () => {
                 leftIcon={<TrashIcon width={13} height={13} />}
                 className="home-page__row-delete"
               >
-                Del
+                Delete
               </Button>
             )}
           </div>

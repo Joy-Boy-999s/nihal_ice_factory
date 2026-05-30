@@ -20,7 +20,7 @@ import {
   Select,
   useToast,
 } from '../../components';
-import { buildAuthConfig, logout, useAuth } from '../../lib/auth';
+import { buildAuthConfig, logout } from '../../lib/auth';
 import { EditIcon, PlusIcon, SearchIcon, TrashIcon } from '../../layout/nav-icons';
 import './IcePriceMaster.css';
 
@@ -68,7 +68,6 @@ const formatINR = (value: number): string =>
 const IcePriceMaster: React.FC = () => {
   const navigate = useNavigate();
   const toast    = useToast();
-  const { role } = useAuth();
   const iceTypeService = useMemo(() => new IceTypeService(), []);
   const plantService   = useMemo(() => new PlantService(), []);
 
@@ -170,7 +169,8 @@ const IcePriceMaster: React.FC = () => {
       (max, p) => (Number(p.price) > max ? Number(p.price) : max),
       0,
     );
-    return { total: prices.length, active: active.length, avgPrice, highest };
+    const activePlants = new Set(active.map((p) => p.plantUnit)).size;
+    return { total: prices.length, active: active.length, avgPrice, highest, activePlants };
   }, [prices]);
 
   // ── Form helpers ───────────────────────────────────────────────────────────
@@ -192,7 +192,7 @@ const IcePriceMaster: React.FC = () => {
     if (!form.iceTypeCode.trim()) {
       errs.iceTypeCode = 'Ice type code is required';
     } else if (!CODE_RE.test(form.iceTypeCode.trim())) {
-      errs.iceTypeCode = 'Letters, digits, dot, underscore, hyphen only — no spaces, 2–50 characters';
+      errs.iceTypeCode = 'Only letters, digits, dash, or underscore — no spaces allowed';
     }
 
     if (!form.plantUnit.trim()) {
@@ -406,9 +406,9 @@ const IcePriceMaster: React.FC = () => {
           <span className="ipm-stat__sub">per unit</span>
         </div>
         <div className="ipm-stat">
-          <span className="ipm-stat__label">Role</span>
-          <span className="ipm-stat__value" style={{ fontSize: '1rem' }}>{role}</span>
-          <span className="ipm-stat__sub">admin access</span>
+          <span className="ipm-stat__label">Active Plants</span>
+          <span className="ipm-stat__value">{stats.activePlants}</span>
+          <span className="ipm-stat__sub">with configured types</span>
         </div>
       </div>
 
@@ -467,7 +467,7 @@ const IcePriceMaster: React.FC = () => {
               invalid={!!formErrors.iceTypeName}
               disabled={saving || !!editing}
             />
-            <p className="ipm-form-hint">Human-readable label shown in the sale form and invoices.</p>
+            <p className="ipm-form-hint">This name appears in sale forms and printed invoices.</p>
           </Field>
 
           {/* Code */}
@@ -480,9 +480,7 @@ const IcePriceMaster: React.FC = () => {
               invalid={!!formErrors.iceTypeCode}
               disabled={saving || !!editing}
             />
-            <p className="ipm-form-hint">
-              Short system code — letters, digits, dot, underscore, hyphen. No spaces. 2–50 chars.
-            </p>
+            <p className="ipm-form-hint">A short identifier with no spaces. e.g. Can, Block, Piece</p>
           </Field>
 
           {/* Plant */}
@@ -492,12 +490,12 @@ const IcePriceMaster: React.FC = () => {
               value={form.plantUnit}
               onChange={(e) => setField('plantUnit', e.target.value)}
               options={existingPlants.map((p) => ({ label: p, value: p }))}
-              placeholder={existingPlants.length === 0 ? 'No plants — add in Plant Master first' : 'Select plant'}
+              placeholder={existingPlants.length === 0 ? 'No plants available — add plants first' : 'Select plant'}
               invalid={!!formErrors.plantUnit}
               disabled={saving || !!editing || existingPlants.length === 0}
             />
             <p className="ipm-form-hint">
-              Plants are managed in the{' '}
+              Add or manage plants under{' '}
               <a href="/plant-master" style={{ color: 'var(--color-primary)' }}>Plant Master</a>.
             </p>
           </Field>

@@ -14,15 +14,15 @@
 
 /* Hover */
 .ui-input:not(:has(.ui-input__control:disabled)):hover {
-  border-color: #a5b4fc;
-  background: #fafbff;
+  border-color: var(--color-primary-dim);
+  background: var(--color-surface-alt);
 }
 
 /* Focus */
 .ui-input:focus-within {
   border-color: var(--color-primary);
   box-shadow: var(--ring-primary);
-  background: #fafbff;
+  background: var(--color-surface-alt);
 }
 
 /* Error state */
