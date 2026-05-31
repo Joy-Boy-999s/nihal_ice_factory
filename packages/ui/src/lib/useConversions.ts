@@ -14,7 +14,7 @@ export function useConversions(): IceSizeConversionDto[] {
       const raw      = envelope?.data ?? res?.data;
       const list     = Array.isArray(raw) ? (raw as IceSizeConversionDto[]) : [];
       setConvs(list);
-    }).catch(() => {});
+    }).catch(() => {}); // eslint-disable-line @typescript-eslint/no-empty-function
   }, []);
 
   return convs;
