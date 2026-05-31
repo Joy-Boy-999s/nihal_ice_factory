@@ -69,7 +69,7 @@ const SalePreviewModal: React.FC<SalePreviewModalProps> = ({
     >
       <div className="sale-preview">
         <p className="sale-preview__hint">
-          Please confirm the details below. Once saved, this sale will be recorded in your ledger.
+          Review and confirm before saving.
         </p>
 
         <section className="sale-preview__section">

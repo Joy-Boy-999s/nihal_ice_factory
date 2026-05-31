@@ -567,7 +567,12 @@ const PlantMaster: React.FC = () => {
         onClose={closeModal}
       >
         <div className="pm-form-field">
-          <Field label="Plant Name" required error={formErrors.plantName}>
+          <Field
+            label="Plant Name"
+            required
+            error={formErrors.plantName}
+            hint="Used in ice type setup and sale entry forms."
+          >
             <Input
               id="plant-name"
               value={form.plantName}
@@ -577,9 +582,6 @@ const PlantMaster: React.FC = () => {
               disabled={saving}
               autoFocus
             />
-            <p className="pm-form-hint">
-              This name will appear in ice type setup and sale entry forms.
-            </p>
           </Field>
         </div>
 

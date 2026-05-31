@@ -19,7 +19,7 @@
   font-weight: 800;
 }
 
-.ui-field__control { display: flex; }
+.ui-field__control { display: flex; flex-direction: column; }
 
 .ui-field__error {
   display: flex;
