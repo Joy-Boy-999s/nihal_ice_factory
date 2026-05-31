@@ -124,8 +124,8 @@ export const Select: React.FC<SelectProps> = ({
         const synthetic = {
           target: { value: optValue, name: name ?? '' },
           currentTarget: { value: optValue },
-          preventDefault: () => {},
-          stopPropagation: () => {},
+          preventDefault: () => {}, // eslint-disable-line @typescript-eslint/no-empty-function
+          stopPropagation: () => {}, // eslint-disable-line @typescript-eslint/no-empty-function
         } as unknown as React.ChangeEvent<HTMLSelectElement>;
         onChange?.(synthetic);
         closeMenu();
