@@ -43,7 +43,7 @@ export function calculateTotal(items: SaleItem[], discount: number): number {
   return Math.max(0, subtotal - discount);
 }
 
-/** Simple sum of all quantities (no weighting). */
+/** Sum of all quantities. */
 export function calculateTotalUnits(items: SaleItem[]): number {
   return items.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
 }

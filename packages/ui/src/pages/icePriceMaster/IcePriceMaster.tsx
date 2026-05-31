@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { IceTypeService, PlantService } from '@nihal-ice-factory/shared-services';
 import {
@@ -20,9 +20,13 @@ import {
   Select,
   useToast,
 } from '../../components';
-import { buildAuthConfig, logout, useAuth } from '../../lib/auth';
+import { buildAuthConfig, logout } from '../../lib/auth';
 import { EditIcon, PlusIcon, SearchIcon, TrashIcon } from '../../layout/nav-icons';
 import './IcePriceMaster.css';
+
+const ConversionTab = lazy(() => import('./ConversionTab'));
+
+type ActiveTab = 'types' | 'conversions';
 
 /** Minimal typed shape for catch-block errors. */
 interface CatchError { message?: string; response?: { status?: number } }
@@ -68,7 +72,6 @@ const formatINR = (value: number): string =>
 const IcePriceMaster: React.FC = () => {
   const navigate = useNavigate();
   const toast    = useToast();
-  const { role } = useAuth();
   const iceTypeService = useMemo(() => new IceTypeService(), []);
   const plantService   = useMemo(() => new PlantService(), []);
 
@@ -87,6 +90,8 @@ const IcePriceMaster: React.FC = () => {
     open: false, item: null,
   });
   const [deleting, setDeleting] = useState(false);
+
+  const [activeTab, setActiveTab] = useState<ActiveTab>('types');
 
   // ── Auth ──────────────────────────────────────────────────────────────────
 
@@ -170,7 +175,8 @@ const IcePriceMaster: React.FC = () => {
       (max, p) => (Number(p.price) > max ? Number(p.price) : max),
       0,
     );
-    return { total: prices.length, active: active.length, avgPrice, highest };
+    const activePlants = new Set(active.map((p) => p.plantUnit)).size;
+    return { total: prices.length, active: active.length, avgPrice, highest, activePlants };
   }, [prices]);
 
   // ── Form helpers ───────────────────────────────────────────────────────────
@@ -192,7 +198,7 @@ const IcePriceMaster: React.FC = () => {
     if (!form.iceTypeCode.trim()) {
       errs.iceTypeCode = 'Ice type code is required';
     } else if (!CODE_RE.test(form.iceTypeCode.trim())) {
-      errs.iceTypeCode = 'Letters, digits, dot, underscore, hyphen only — no spaces, 2–50 characters';
+      errs.iceTypeCode = 'Only letters, digits, dash, or underscore — no spaces allowed';
     }
 
     if (!form.plantUnit.trim()) {
@@ -301,6 +307,15 @@ const IcePriceMaster: React.FC = () => {
     }
   };
 
+  // ── Conversion tab save ────────────────────────────────────────────────────
+
+  const handleConversionSaved = (updated: IceTypeDto[]) => {
+    setPrices(prev => {
+      const map = new Map(updated.map(t => [t.id, t]));
+      return prev.map(p => map.get(p.id) ?? p);
+    });
+  };
+
   // ── Table columns ──────────────────────────────────────────────────────────
 
   const columns: Column<IceTypeDto>[] = [
@@ -380,13 +395,34 @@ const IcePriceMaster: React.FC = () => {
     <div className="ipm-page">
       <PageHeader
         title="Ice Type Master"
-        subtitle="Define ice unit types and their selling prices per factory plant. Changes apply to all new sales."
+        subtitle="Manage ice types, pricing and size conversions."
         actions={
-          <Button id="add-ice-type-btn" onClick={openAdd} leftIcon={<PlusIcon width={16} height={16} />}>
-            Add Ice Type
-          </Button>
+          activeTab === 'types' ? (
+            <Button id="add-ice-type-btn" onClick={openAdd} leftIcon={<PlusIcon width={16} height={16} />}>
+              Add Ice Type
+            </Button>
+          ) : null
         }
       />
+
+      {/* Tab bar */}
+      <div className="ipm-tabs">
+        <button
+          className={`ipm-tab${activeTab === 'types' ? ' ipm-tab--active' : ''}`}
+          onClick={() => setActiveTab('types')}
+        >
+          Ice Types
+        </button>
+        <button
+          className={`ipm-tab${activeTab === 'conversions' ? ' ipm-tab--active' : ''}`}
+          onClick={() => setActiveTab('conversions')}
+        >
+          Size Conversions
+        </button>
+      </div>
+
+      {/* ── Ice Types tab ── */}
+      {activeTab === 'types' && <>
 
       {/* Stats */}
       <div className="ipm-stats">
@@ -406,9 +442,9 @@ const IcePriceMaster: React.FC = () => {
           <span className="ipm-stat__sub">per unit</span>
         </div>
         <div className="ipm-stat">
-          <span className="ipm-stat__label">Role</span>
-          <span className="ipm-stat__value" style={{ fontSize: '1rem' }}>{role}</span>
-          <span className="ipm-stat__sub">admin access</span>
+          <span className="ipm-stat__label">Active Plants</span>
+          <span className="ipm-stat__value">{stats.activePlants}</span>
+          <span className="ipm-stat__sub">with configured types</span>
         </div>
       </div>
 
@@ -450,6 +486,15 @@ const IcePriceMaster: React.FC = () => {
         )}
       </Card>
 
+      </> /* end Ice Types tab */}
+
+      {/* ── Conversions tab ── */}
+      {activeTab === 'conversions' && (
+        <Suspense fallback={<div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>Loading…</div>}>
+          <ConversionTab iceTypes={prices} onSaved={handleConversionSaved} />
+        </Suspense>
+      )}
+
       {/* Add / Edit Modal */}
       <Modal
         open={modalOpen}
@@ -458,7 +503,12 @@ const IcePriceMaster: React.FC = () => {
       >
         <div className="ipm-form-grid">
           {/* Name */}
-          <Field label="Ice Type Name" required error={formErrors.iceTypeName}>
+          <Field
+            label="Ice Type Name"
+            required
+            error={formErrors.iceTypeName}
+            hint="Shown in sale forms and printed invoices."
+          >
             <Input
               id="ice-type-name"
               value={form.iceTypeName}
@@ -467,11 +517,15 @@ const IcePriceMaster: React.FC = () => {
               invalid={!!formErrors.iceTypeName}
               disabled={saving || !!editing}
             />
-            <p className="ipm-form-hint">Human-readable label shown in the sale form and invoices.</p>
           </Field>
 
           {/* Code */}
-          <Field label="Ice Type Code" required error={formErrors.iceTypeCode}>
+          <Field
+            label="Ice Type Code"
+            required
+            error={formErrors.iceTypeCode}
+            hint="Short identifier, no spaces — e.g. Can, Block, Piece"
+          >
             <Input
               id="ice-type-code"
               value={form.iceTypeCode}
@@ -480,30 +534,33 @@ const IcePriceMaster: React.FC = () => {
               invalid={!!formErrors.iceTypeCode}
               disabled={saving || !!editing}
             />
-            <p className="ipm-form-hint">
-              Short system code — letters, digits, dot, underscore, hyphen. No spaces. 2–50 chars.
-            </p>
           </Field>
 
           {/* Plant */}
-          <Field label="Plant / Unit" required error={formErrors.plantUnit}>
+          <Field
+            label="Plant / Unit"
+            required
+            error={formErrors.plantUnit}
+            hint={<>Manage plants in <a href="/plant-master" style={{ color: 'var(--color-primary)' }}>Plant Master</a>.</>}
+          >
             <Select
               id="ice-type-plant"
               value={form.plantUnit}
               onChange={(e) => setField('plantUnit', e.target.value)}
               options={existingPlants.map((p) => ({ label: p, value: p }))}
-              placeholder={existingPlants.length === 0 ? 'No plants — add in Plant Master first' : 'Select plant'}
+              placeholder={existingPlants.length === 0 ? 'No plants available — add plants first' : 'Select plant'}
               invalid={!!formErrors.plantUnit}
               disabled={saving || !!editing || existingPlants.length === 0}
             />
-            <p className="ipm-form-hint">
-              Plants are managed in the{' '}
-              <a href="/plant-master" style={{ color: 'var(--color-primary)' }}>Plant Master</a>.
-            </p>
           </Field>
 
           {/* Price */}
-          <Field label="Price (₹)" required error={formErrors.price} style={{ gridColumn: '1 / -1' } as React.CSSProperties}>
+          <Field
+            label="Price (₹)"
+            required
+            error={formErrors.price}
+            hint="Selling price per unit in Indian Rupees."
+          >
             <Input
               id="ice-type-price"
               value={form.price}
@@ -513,8 +570,8 @@ const IcePriceMaster: React.FC = () => {
               invalid={!!formErrors.price}
               disabled={saving}
             />
-            <p className="ipm-form-hint">Selling price per unit in Indian Rupees.</p>
           </Field>
+
         </div>
 
         <div className="ipm-modal-actions">

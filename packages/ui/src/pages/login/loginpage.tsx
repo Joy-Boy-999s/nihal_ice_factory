@@ -77,7 +77,7 @@ const LoginPage: React.FC = () => {
     if (!form.password) next.password = 'Password is required';
     else if (mode === 'register' && !PASSWORD_RE.test(form.password)) {
       next.password =
-        'Min 8 chars incl. 2 lowercase, 1 uppercase, 1 digit, 2 symbols';
+        'Must be at least 8 characters with uppercase, lowercase, a digit, and a symbol';
     }
     if (mode === 'register' && !form.username) next.username = 'Username is required';
     setErrors(next);
@@ -138,7 +138,7 @@ const LoginPage: React.FC = () => {
         setForgotStep('reset');
       } else {
         if (!PASSWORD_RE.test(forgotForm.newPassword))
-          throw new Error('Password does not meet complexity requirements');
+          throw new Error('Password must be at least 8 characters with uppercase, lowercase, a digit, and a symbol');
         const req: ResetPassowordModel = {
           email: forgotForm.email,
           otp: forgotForm.otp,

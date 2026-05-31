@@ -20,9 +20,7 @@
 
 /* ── Column headers ── */
 .ui-table thead {
-  position: sticky;
-  top: 0;
-  z-index: 2;
+  position: relative;
 }
 
 .ui-table thead th {

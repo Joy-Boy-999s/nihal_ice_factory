@@ -30,6 +30,8 @@ import {
   formatCurrency,
   getIceTypesForPlant,
 } from '../../lib/pricing';
+import { useConversions } from '../../lib/useConversions';
+import { getConvertedAmounts, getSaleConversionTotals } from '../../lib/conversions';
 import {
   PlusIcon,
   DownloadIcon,
@@ -152,13 +154,15 @@ const Home: React.FC = () => {
   const salesService   = useMemo(() => new SalesHelpService(), []);
   const iceTypeService = useMemo(() => new IceTypeService(), []);
   const plantService   = useMemo(() => new PlantService(), []);
+  const conversions    = useConversions();
 
-  const [sales, setSales]           = useState<Sale[]>([]);
-  const [loading, setLoading]       = useState(false);
-  const [query, setQuery]           = useState('');
-  const [apiTypes, setApiTypes]     = useState<IceTypeDto[]>([]);
+  const [sales, setSales]               = useState<Sale[]>([]);
+  const [loading, setLoading]           = useState(false);
+  const [query, setQuery]               = useState('');
+  const [apiTypes, setApiTypes]         = useState<IceTypeDto[]>([]);
   const [activePlants, setActivePlants] = useState<PlantDto[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([]);
+  const [showConversions, setShowConversions] = useState(false);
 
   // Plant dropdown — driven by getActivePlants which is already role-aware on the backend.
   const unitOptions = useMemo(
@@ -451,6 +455,7 @@ const Home: React.FC = () => {
     const items      = (r.itemBreakdown ?? []).filter((i) => i.quantity > 0);
     const subtotal   = items.reduce((s, i) => s + i.subtotal, 0);
     const grandTotal = Number(r.totalAmount) || Math.max(0, subtotal - discount);
+    const convTotals = getSaleConversionTotals(items, conversions);
 
     const itemsHtml = items
       .map(
@@ -521,9 +526,16 @@ const Home: React.FC = () => {
 
         <div class="invoice__summary">
           <div class="invoice__notes">
-            <div class="invoice__notes-title">Notes</div>
+            <div class="invoice__notes-title">Unit Summary</div>
             <p>Total Units: <strong>${totalUnits}</strong></p>
-            <p class="muted small">Goods once sold will not be taken back. Thank you for your business.</p>
+            ${convTotals.length > 0 ? `
+            <div class="invoice__conv-summary">
+              ${convTotals.map(ct => {
+                const v = ct.total % 1 === 0 ? ct.total : parseFloat(ct.total.toFixed(4));
+                return `<span class="invoice__conv-chip">${v} ${escapeHtml(ct.typeName)}</span>`;
+              }).join('')}
+            </div>` : ''}
+            <p class="muted small" style="margin-top:10px">Goods once sold will not be taken back. Thank you for your business.</p>
           </div>
           <table class="invoice__totals">
             <tr><th>Subtotal</th><td>${formatInr(subtotal)}</td></tr>
@@ -597,6 +609,10 @@ const Home: React.FC = () => {
       .invoice__notes-title { font-size:10px; font-weight:700; letter-spacing:.12em;
         text-transform:uppercase; color:#64748b; margin-bottom:6px; }
       .invoice__notes p { margin:4px 0; }
+      .invoice__conv-summary { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+      .invoice__conv-chip { display:inline-block; padding:2px 10px; background:#fff7ed;
+        color:#c2410c; border:1px solid #fed7aa; border-radius:999px;
+        font-size:11px; font-weight:700; white-space:nowrap; }
       .invoice__totals { width:100%; border-collapse:collapse; font-size:13px; }
       .invoice__totals th, .invoice__totals td { padding:8px 12px; }
       .invoice__totals th { text-align:left; color:#64748b; font-weight:500; }
@@ -679,20 +695,33 @@ const Home: React.FC = () => {
   // ── Export ────────────────────────────────────────────────────────────────
 
   const handleExport = () => {
-    const rows = (filteredSales.length ? filteredSales : sales).map((s) => ({
-      'Serial No':    s.id,
-      Date:           s.date,
-      Time:           s.time,
-      Unit:           s.unit,
-      Name:           s.name,
-      Mobile:         s.mobile,
-      Shop:           s.shop,
-      Items:          (s.items ?? []).map((i) => `${i.iceTypeName}×${i.quantity}`).join(', '),
-      'Total Units':  s.totalUnits,
-      Discount:       s.discount,
-      'Total Amount': s.totalAmount,
-      'Sold By':      s.soldBy,
-    }));
+    const rows = (filteredSales.length ? filteredSales : sales).map((s) => {
+      const activeItems = (s.items ?? []).filter((i) => i.quantity > 0);
+      const convTotals  = getSaleConversionTotals(activeItems, conversions);
+      const convStr     = convTotals
+        .map(ct => {
+          const v = ct.total % 1 === 0 ? ct.total : parseFloat(ct.total.toFixed(4));
+          return `${v} ${ct.typeName}`;
+        })
+        .join(', ');
+
+      const row: Record<string, unknown> = {
+        'Serial No':    s.id,
+        Date:           s.date,
+        Time:           s.time,
+        Unit:           s.unit,
+        Name:           s.name,
+        Mobile:         s.mobile,
+        Shop:           s.shop,
+        Items:          activeItems.map((i) => `${i.iceTypeName}×${i.quantity}`).join(', '),
+        'Total Units':  s.totalUnits,
+        Discount:       s.discount,
+        'Total Amount': s.totalAmount,
+        'Sold By':      s.soldBy,
+      };
+      if (convStr) row['Equivalent Units'] = convStr;
+      return row;
+    });
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Sales');
@@ -701,70 +730,88 @@ const Home: React.FC = () => {
   };
 
   // ── Table columns ─────────────────────────────────────────────────────────
+  // Not memoised — render functions close directly over showConversions and
+  // conversions so toggling always reflects the current values.
 
-  const columns: Column<Sale>[] = useMemo(
-    () => [
-      { key: 'id',     title: '#',        accessor: 'id',    width: 60, align: 'center' },
-      { key: 'date',   title: 'Date',     accessor: 'date',  align: 'left'  },
-      { key: 'time',   title: 'Time',     accessor: 'time',  align: 'left'  },
-      { key: 'unit',   title: 'Unit',     accessor: 'unit',  align: 'left'  },
-      { key: 'name',   title: 'Customer', accessor: 'name',  align: 'left'  },
-      { key: 'mobile', title: 'Mobile',   accessor: 'mobile',align: 'left'  },
-      { key: 'shop',   title: 'Shop',     accessor: 'shop',  align: 'left'  },
-      {
-        key: 'items',
-        title: 'Items',
-        align: 'left',
-        render: (row) => {
-          const summary = (row.items ?? [])
-            .filter((i) => i.quantity > 0)
-            .map((i) => `${i.iceTypeName}×${i.quantity}`)
-            .join(', ');
-          return <span title={summary}>{summary || '—'}</span>;
-        },
-      },
-      { key: 'totalUnits', title: 'Total Units', accessor: 'totalUnits', align: 'right' },
-      { key: 'discount',   title: 'Discount',    accessor: 'discount',   align: 'right' },
-      {
-        key: 'totalAmount',
-        title: 'Amount',
-        align: 'right',
-        render: (r) => formatCurrency(r.totalAmount),
-      },
-      { key: 'soldBy', title: 'Sold By', accessor: 'soldBy', align: 'left' },
-      {
-        key: 'actions',
-        title: 'Actions',
-        align: 'center',
-        width: 180,
-        render: (row) => (
-          <div className="home-page__row-actions">
-            {isAdmin && (
-              <Button size="sm" variant="secondary" onClick={() => openEdit(row)} leftIcon={<EditIcon width={13} height={13} />}>
-                Edit
-              </Button>
-            )}
-            <Button size="sm" variant="ghost" onClick={() => handlePrint(row)} leftIcon={<PrinterIcon width={13} height={13} />}>
-              Print
-            </Button>
-            {isAdmin && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setConfirmDelete({ open: true, ids: [row.id] })}
-                leftIcon={<TrashIcon width={13} height={13} />}
-                className="home-page__row-delete"
-              >
-                Del
-              </Button>
+  const columns: Column<Sale>[] = [
+    { key: 'id',     title: '#',        accessor: 'id',    width: 60, align: 'center' },
+    { key: 'date',   title: 'Date',     accessor: 'date',  align: 'left'  },
+    { key: 'time',   title: 'Time',     accessor: 'time',  align: 'left'  },
+    { key: 'unit',   title: 'Unit',     accessor: 'unit',  align: 'left'  },
+    { key: 'name',   title: 'Customer', accessor: 'name',  align: 'left'  },
+    { key: 'mobile', title: 'Mobile',   accessor: 'mobile',align: 'left'  },
+    { key: 'shop',   title: 'Shop',     accessor: 'shop',  align: 'left'  },
+    {
+      key: 'items',
+      title: 'Items',
+      align: 'left',
+      render: (row) => {
+        const active = (row.items ?? []).filter((i) => i.quantity > 0);
+        if (!active.length) return <span>—</span>;
+        const convTotals = showConversions
+          ? getSaleConversionTotals(active, conversions)
+          : [];
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px' }}>
+              {active.map((i) => (
+                <span key={i.iceTypeId} style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap' }}>
+                  {i.iceTypeName} × {i.quantity}
+                </span>
+              ))}
+            </div>
+            {convTotals.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {convTotals.map(ct => (
+                  <span key={ct.typeName} className="conv-chip conv-chip--total">
+                    ≡ {ct.total % 1 === 0 ? ct.total : parseFloat(ct.total.toFixed(4))} {ct.typeName}
+                  </span>
+                ))}
+              </div>
             )}
           </div>
-        ),
+        );
       },
-    ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isAdmin],
-  );
+    },
+    { key: 'totalUnits', title: 'Total Units', accessor: 'totalUnits', align: 'right' },
+    { key: 'discount',   title: 'Discount',    accessor: 'discount',   align: 'right' },
+    {
+      key: 'totalAmount',
+      title: 'Amount',
+      align: 'right',
+      render: (r) => formatCurrency(r.totalAmount),
+    },
+    { key: 'soldBy', title: 'Sold By', accessor: 'soldBy', align: 'left' },
+    {
+      key: 'actions',
+      title: 'Actions',
+      align: 'center',
+      width: 180,
+      render: (row) => (
+        <div className="home-page__row-actions">
+          {isAdmin && (
+            <Button size="sm" variant="secondary" onClick={() => openEdit(row)} leftIcon={<EditIcon width={13} height={13} />}>
+              Edit
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" onClick={() => handlePrint(row)} leftIcon={<PrinterIcon width={13} height={13} />}>
+            Print
+          </Button>
+          {isAdmin && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setConfirmDelete({ open: true, ids: [row.id] })}
+              leftIcon={<TrashIcon width={13} height={13} />}
+              className="home-page__row-delete"
+            >
+              Delete
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -798,6 +845,13 @@ const Home: React.FC = () => {
                 leftIcon={<SearchIcon width={14} height={14} />}
               />
             </div>
+            <Button
+              size="sm"
+              variant={showConversions ? 'primary' : 'secondary'}
+              onClick={() => setShowConversions((v) => !v)}
+            >
+              {showConversions ? 'Hide Conversions' : 'Show Conversions'}
+            </Button>
             {selectedKeys.length > 0 && (
               <>
                 <Button size="sm" variant="secondary" onClick={handleBulkPrint} leftIcon={<PrinterIcon width={13} height={13} />}>
@@ -895,16 +949,27 @@ const Home: React.FC = () => {
               </Field>
 
               {/* Dynamic item inputs */}
-              {form.items.map((item) => (
-                <Field key={item.iceTypeId} label={`${item.iceTypeName} (₹${item.price})`}>
-                  <Input
-                    value={item.quantity}
-                    onChange={(e) => setItemQty(item.iceTypeId, e.target.value)}
-                    inputMode="numeric"
-                    placeholder="0"
-                  />
-                </Field>
-              ))}
+              {form.items.map((item) => {
+                const qty      = Number(item.quantity) || 0;
+                const convList = getConvertedAmounts(item.iceTypeName, qty, conversions);
+                return (
+                  <Field key={item.iceTypeId} label={`${item.iceTypeName} (₹${item.price})`}>
+                    <Input
+                      value={item.quantity}
+                      onChange={(e) => setItemQty(item.iceTypeId, e.target.value)}
+                      inputMode="numeric"
+                      placeholder="0"
+                    />
+                    {convList.length > 0 && (
+                      <div className="conv-hints">
+                        {convList.map(c => (
+                          <span key={c.toName} className="conv-chip">{c.label}</span>
+                        ))}
+                      </div>
+                    )}
+                  </Field>
+                );
+              })}
 
               {/* Discount */}
               <Field label="Discount (₹)" error={formErrors.discount}>
