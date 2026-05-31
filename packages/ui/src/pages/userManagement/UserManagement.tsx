@@ -207,7 +207,7 @@ const UserManagement: React.FC = () => {
     else if (!/^\S+@\S+\.\S+$/.test(createForm.email)) errs.email = 'Enter a valid email';
     if (!createForm.password) errs.password = 'Password is required';
     else if (!PASSWORD_RE.test(createForm.password))
-      errs.password = 'Min 8 chars: 2 lowercase, 1 uppercase, 1 digit, 2 symbols';
+      errs.password = 'Must be at least 8 characters with uppercase, lowercase, a digit, and a symbol';
     setCreateErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -296,7 +296,7 @@ const UserManagement: React.FC = () => {
         buildAuthConfig(),
       );
       if (res?.status) {
-        toast.success(`Role changed to ${roleModal.selected}`);
+        toast.success(`Role updated to ${roleModal.selected === UserRole.ADMIN ? 'Administrator' : 'Operator'}`);
         setRoleModal({ open: false, user: null, selected: UserRole.USER });
         await fetchAll();
       } else {
@@ -469,7 +469,7 @@ const UserManagement: React.FC = () => {
     <div className="um-page">
       <PageHeader
         title="User Management"
-        subtitle="Manage operator accounts and assign factory plant access"
+        subtitle="Manage user accounts and control which plants each operator can access"
         actions={
           <Button onClick={() => { setCreateForm(emptyCreateForm()); setCreateErrors({}); setCreateOpen(true); }}>
             <PlusIcon width={15} height={15} />
@@ -553,7 +553,7 @@ const UserManagement: React.FC = () => {
             <Input
               value={createForm.username}
               onChange={(e) => setCreateField('username', e.target.value)}
-              placeholder="operator_name"
+              placeholder="e.g. john_doe"
               invalid={!!createErrors.username}
               autoComplete="off"
             />
@@ -575,7 +575,7 @@ const UserManagement: React.FC = () => {
               type="password"
               value={createForm.password}
               onChange={(e) => setCreateField('password', e.target.value)}
-              placeholder="Min 8 chars with uppercase, digits & symbols"
+              placeholder="At least 8 characters with mixed case and symbols"
               invalid={!!createErrors.password}
               autoComplete="new-password"
             />

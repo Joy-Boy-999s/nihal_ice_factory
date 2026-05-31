@@ -2,6 +2,7 @@ import React, { Suspense, lazy } from 'react';
 import { Card, PageHeader } from '../../components';
 import DashboardSkeleton from './components/DashboardSkeleton';
 import DashboardToolbar from './components/DashboardToolbar';
+import ConversionSummaryCard from './components/ConversionSummaryCard';
 import { useDashboardMetrics } from './utils/use-dashboard-metrics';
 import { useDashboardSeo } from './utils/use-dashboard-seo';
 import './styles/dashboard.css';
@@ -58,6 +59,7 @@ const Dashboard: React.FC = () => {
             <Suspense fallback={<DashboardSkeleton variant="charts" />}>
               <DashboardCharts charts={metrics.charts} />
             </Suspense>
+            <ConversionSummaryCard />
           </>
         )
       )}
