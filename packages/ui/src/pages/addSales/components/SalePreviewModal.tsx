@@ -1,16 +1,19 @@
 import React from 'react';
 import { Button, Modal } from '../../../components';
 import { formatCurrency } from '../../../lib/pricing';
+import { getConvertedAmounts } from '../../../lib/conversions';
+import type { IceSizeConversionDto } from '@nihal-ice-factory/shared-models';
 import type { SaleForm } from '../model/types';
 
 export interface SalePreviewModalProps {
-  open:        boolean;
-  form:        SaleForm;
-  totalUnits:  number;
-  totalAmount: number;
-  saving:      boolean;
-  onEdit:      () => void;
-  onConfirm:   () => void;
+  open:         boolean;
+  form:         SaleForm;
+  totalUnits:   number;
+  totalAmount:  number;
+  conversions:  IceSizeConversionDto[];
+  saving:       boolean;
+  onEdit:       () => void;
+  onConfirm:    () => void;
 }
 
 interface InfoRow {
@@ -23,12 +26,12 @@ const SalePreviewModal: React.FC<SalePreviewModalProps> = ({
   form,
   totalUnits,
   totalAmount,
+  conversions,
   saving,
   onEdit,
   onConfirm,
 }) => {
-  const discountN = Number(form.discount) || 0;
-
+  const discountN  = Number(form.discount) || 0;
   const activeItems = form.items.filter((i) => Number(i.quantity) > 0);
 
   const subtotal = activeItems.reduce(
@@ -111,16 +114,29 @@ const SalePreviewModal: React.FC<SalePreviewModalProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {activeItems.map((item) => (
-                  <tr key={item.iceTypeId}>
-                    <td>{item.iceTypeName}</td>
-                    <td className="sale-preview__num">{Number(item.quantity)}</td>
-                    <td className="sale-preview__num">{formatCurrency(item.price)}</td>
-                    <td className="sale-preview__num">
-                      {formatCurrency(Number(item.quantity) * item.price)}
-                    </td>
-                  </tr>
-                ))}
+                {activeItems.map((item) => {
+                  const qty      = Number(item.quantity);
+                  const convList = getConvertedAmounts(item.iceTypeName, qty, conversions);
+                  return (
+                    <tr key={item.iceTypeId}>
+                      <td>{item.iceTypeName}</td>
+                      <td className="sale-preview__num">
+                        <span>{qty}</span>
+                        {convList.length > 0 && (
+                          <div className="conv-hints" style={{ justifyContent: 'flex-end' }}>
+                            {convList.map(c => (
+                              <span key={c.toName} className="conv-chip">{c.label}</span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="sale-preview__num">{formatCurrency(item.price)}</td>
+                      <td className="sale-preview__num">
+                        {formatCurrency(qty * item.price)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
               <tfoot>
                 <tr className="sale-preview__subtotal-row">

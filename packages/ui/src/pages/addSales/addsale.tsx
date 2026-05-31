@@ -11,6 +11,8 @@ import {
   formatCurrency,
   getIceTypesForPlant,
 } from '../../lib/pricing';
+import { useConversions } from '../../lib/useConversions';
+import { getConvertedAmounts } from '../../lib/conversions';
 import { createInitialForm } from './utils/constants';
 import { isValidNumericInput, validateSaleForm } from './utils/form-helpers';
 import { SaleForm, SaleItem } from './model/types';
@@ -34,6 +36,7 @@ const AddSale: React.FC = () => {
   const salesService   = useMemo(() => new SalesHelpService(), []);
   const iceTypeService = useMemo(() => new IceTypeService(), []);
   const plantService   = useMemo(() => new PlantService(), []);
+  const conversions    = useConversions();
 
   const [form, setForm]       = useState<SaleForm>(createInitialForm());
   const [errors, setErrors]   = useState<ReturnType<typeof validateSaleForm>>({});
@@ -287,20 +290,31 @@ const AddSale: React.FC = () => {
                   </Field>
 
                   {/* Dynamic quantity inputs — one per ice type */}
-                  {form.items.map((item: SaleItem) => (
-                    <Field
-                      key={item.iceTypeId}
-                      label={`${item.iceTypeName} (₹${item.price})`}
-                    >
-                      <Input
-                        value={item.quantity}
-                        onChange={(e) => setItemQty(item.iceTypeId, e.target.value)}
-                        inputMode="numeric"
-                        disabled={itemsDisabled}
-                        placeholder="0"
-                      />
-                    </Field>
-                  ))}
+                  {form.items.map((item: SaleItem) => {
+                    const qty      = Number(item.quantity) || 0;
+                    const convList = getConvertedAmounts(item.iceTypeName, qty, conversions);
+                    return (
+                      <Field
+                        key={item.iceTypeId}
+                        label={`${item.iceTypeName} (₹${item.price})`}
+                      >
+                        <Input
+                          value={item.quantity}
+                          onChange={(e) => setItemQty(item.iceTypeId, e.target.value)}
+                          inputMode="numeric"
+                          disabled={itemsDisabled}
+                          placeholder="0"
+                        />
+                        {convList.length > 0 && (
+                          <div className="conv-hints">
+                            {convList.map(c => (
+                              <span key={c.toName} className="conv-chip">{c.label}</span>
+                            ))}
+                          </div>
+                        )}
+                      </Field>
+                    );
+                  })}
 
                   {/* Discount — always shown after items */}
                   <Field label="Discount (₹)" error={errors.discount}>
@@ -361,6 +375,7 @@ const AddSale: React.FC = () => {
             form={form}
             totalUnits={totalUnits}
             totalAmount={totalAmount}
+            conversions={conversions}
             saving={saving}
             onEdit={handleBackToEdit}
             onConfirm={handleConfirmSave}
