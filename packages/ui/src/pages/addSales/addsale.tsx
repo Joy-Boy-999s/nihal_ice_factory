@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SalesHelpService, IceTypeService, PlantService } from '@nihal-ice-factory/shared-services';
+import { SalesHelpService, IceTypeService, PlantService, InventoryService } from '@nihal-ice-factory/shared-services';
 import { IceTypeDto, PlantDto, ResponsePayloadRecord } from '@nihal-ice-factory/shared-models';
 import { Button, Card, Field, Input, PageHeader, Select, useToast } from '../../components';
 import { buildAuthConfig, logout } from '../../lib/auth';
@@ -33,10 +33,11 @@ const SalePreviewModal = lazy(() => import('./components/SalePreviewModal'));
 const AddSale: React.FC = () => {
   const navigate    = useNavigate();
   const toast       = useToast();
-  const salesService   = useMemo(() => new SalesHelpService(), []);
-  const iceTypeService = useMemo(() => new IceTypeService(), []);
-  const plantService   = useMemo(() => new PlantService(), []);
-  const conversions    = useConversions();
+  const salesService    = useMemo(() => new SalesHelpService(), []);
+  const iceTypeService  = useMemo(() => new IceTypeService(), []);
+  const plantService    = useMemo(() => new PlantService(), []);
+  const inventoryService = useMemo(() => new InventoryService(), []);
+  const conversions     = useConversions();
 
   const [form, setForm]       = useState<SaleForm>(createInitialForm());
   const [errors, setErrors]   = useState<ReturnType<typeof validateSaleForm>>({});
@@ -46,6 +47,10 @@ const AddSale: React.FC = () => {
   // Full list of ice types from the master.
   const [apiTypes, setApiTypes]           = useState<IceTypeDto[]>([]);
   const [typesLoading, setTypesLoading]   = useState(true);
+
+  // Stock availability per iceTypeId for the selected plant.
+  // null = inventory not configured (no enforcement), Map = configured.
+  const [stockMap, setStockMap] = useState<Map<number, number> | null>(null);
 
   // Active plants — backend already scopes this to the user's accessible plants.
   const [activePlants, setActivePlants] = useState<PlantDto[]>([]);
@@ -91,6 +96,24 @@ const AddSale: React.FC = () => {
 
   useEffect(() => { fetchTypes(); }, [fetchTypes]);
 
+  // Fetch stock availability for a plant and populate stockMap.
+  const fetchStock = useCallback(async (unit: string) => {
+    setStockMap(null);
+    try {
+      const res = await inventoryService.getPlantAvailability(unit, buildAuthConfig());
+      if (res?.status) {
+        const raw: { iceTypeId: number; availableCount: number }[] =
+          (res.data as any)?.data ?? res.data ?? [];
+        if (Array.isArray(raw) && raw.length > 0) {
+          setStockMap(new Map(raw.map((r) => [r.iceTypeId, r.availableCount])));
+        }
+        // If empty array → no inventory configured for this plant → leave null (no enforcement)
+      }
+    } catch {
+      // Inventory endpoint failed — don't block Add Sale
+    }
+  }, [inventoryService]);
+
   // When the plant changes, rebuild the items array from that plant's ice types.
   const handleUnitChange = (unit: string) => {
     const types = getIceTypesForPlant(apiTypes, unit);
@@ -100,6 +123,7 @@ const AddSale: React.FC = () => {
       items: buildFormItems(types),
     }));
     setErrors((prev) => ({ ...prev, unit: undefined, items: undefined }));
+    fetchStock(unit);
   };
 
   const setField = <K extends keyof SaleForm>(key: K, value: SaleForm[K]) => {
@@ -107,13 +131,18 @@ const AddSale: React.FC = () => {
     setErrors((prev) => ({ ...prev, [key]: undefined }));
   };
 
-  // Update a single item's quantity.
+  // Update a single item's quantity — clamp to available stock if inventory is configured.
   const setItemQty = (iceTypeId: number, rawValue: string) => {
     if (!isValidNumericInput(rawValue)) return;
+    let clamped = rawValue;
+    if (stockMap !== null && rawValue !== '') {
+      const max = stockMap.get(iceTypeId) ?? 0;
+      if (Number(rawValue) > max) clamped = String(max);
+    }
     setForm((prev) => ({
       ...prev,
       items: prev.items.map((item) =>
-        item.iceTypeId === iceTypeId ? { ...item, quantity: rawValue } : item,
+        item.iceTypeId === iceTypeId ? { ...item, quantity: clamped } : item,
       ),
     }));
     setErrors((prev) => ({ ...prev, items: undefined }));
@@ -190,7 +219,13 @@ const AddSale: React.FC = () => {
     ? `No ice types found for "${form.unit}". Set up ice types in Ice Price Master first.`
     : `${plantTypes.length} ice type${plantTypes.length > 1 ? 's' : ''} available for ${form.unit}.`;
 
-  const canSubmit = !typesLoading && plantTypes.length > 0;
+  // Block submit only when inventory is configured AND every type is out of stock.
+  const allOutOfStock =
+    stockMap !== null &&
+    form.items.length > 0 &&
+    form.items.every((item) => (stockMap.get(item.iceTypeId) ?? 0) === 0);
+
+  const canSubmit = !typesLoading && plantTypes.length > 0 && !allOutOfStock;
 
   return (
     <div className="add-sale-page">
@@ -291,26 +326,42 @@ const AddSale: React.FC = () => {
 
                   {/* Dynamic quantity inputs — one per ice type */}
                   {form.items.map((item: SaleItem) => {
-                    const qty      = Number(item.quantity) || 0;
-                    const convList = getConvertedAmounts(item.iceTypeName, qty, conversions);
+                    const qty        = Number(item.quantity) || 0;
+                    const convList   = getConvertedAmounts(item.iceTypeName, qty, conversions);
+                    const available  = stockMap !== null ? (stockMap.get(item.iceTypeId) ?? 0) : null;
+                    const outOfStock = available !== null && available === 0;
+                    const isDisabled = itemsDisabled || outOfStock;
                     return (
                       <Field
                         key={item.iceTypeId}
-                        label={`${item.iceTypeName} (₹${item.price})`}
+                        label={
+                          <span className="sale-item-label">
+                            {item.iceTypeName} (₹{item.price})
+                            {outOfStock ? (
+                              <span className="sale-stock-badge sale-stock-badge--out">Out of Stock</span>
+                            ) : available !== null ? (
+                              <span className="sale-stock-badge sale-stock-badge--ok">{available} avail</span>
+                            ) : null}
+                          </span>
+                        }
                       >
                         <Input
                           value={item.quantity}
                           onChange={(e) => setItemQty(item.iceTypeId, e.target.value)}
                           inputMode="numeric"
-                          disabled={itemsDisabled}
-                          placeholder="0"
+                          disabled={isDisabled}
+                          placeholder={outOfStock ? '—' : '0'}
+                          className={outOfStock ? 'input--oos' : undefined}
                         />
-                        {convList.length > 0 && (
+                        {!outOfStock && convList.length > 0 && (
                           <div className="conv-hints">
                             {convList.map(c => (
                               <span key={c.toName} className="conv-chip">{c.label}</span>
                             ))}
                           </div>
+                        )}
+                        {available !== null && !outOfStock && (
+                          <span className="sale-max-hint">max {available}</span>
                         )}
                       </Field>
                     );
@@ -355,6 +406,12 @@ const AddSale: React.FC = () => {
                 totalAmountText={formatCurrency(totalAmount)}
               />
             </Suspense>
+
+            {allOutOfStock && (
+              <div className="sale-oos-banner" role="alert">
+                All ice types are currently out of stock for this plant. Please add a new batch before recording a sale.
+              </div>
+            )}
 
             <div className="add-sale-actions">
               <Button variant="secondary" type="button" onClick={() => navigate('/')}>

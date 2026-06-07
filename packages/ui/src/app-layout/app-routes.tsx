@@ -12,6 +12,7 @@ const AddSale        = lazy(() => import('../pages/addSales/addsale'));
 const IcePriceMaster = lazy(() => import('../pages/icePriceMaster/IcePriceMaster'));
 const PlantMaster      = lazy(() => import('../pages/plantMaster/PlantMaster'));
 const UserManagement   = lazy(() => import('../pages/userManagement/UserManagement'));
+const InventoryPage    = lazy(() => import('../pages/inventory/inventory'));
 const NotFoundPage     = lazy(() => import('../pages/errors/NotFoundPage'));
 const UnauthorizedPage = lazy(() => import('../pages/errors/UnauthorizedPage'));
 
@@ -83,6 +84,16 @@ const AppRoutes: React.FC = () => {
             element={
               <LazyPage label="Loading add sale form...">
                 <AddSale />
+              </LazyPage>
+            }
+          />
+
+          {/* Inventory — all authenticated users */}
+          <Route
+            path="/inventory"
+            element={
+              <LazyPage label="Loading inventory...">
+                <InventoryPage />
               </LazyPage>
             }
           />

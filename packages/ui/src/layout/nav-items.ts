@@ -5,6 +5,7 @@ import {
   FactoryIcon,
   PriceTagIcon,
   SalesIcon,
+  SnowflakeIcon,
   UsersIcon,
 } from './nav-icons';
 
@@ -27,6 +28,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: 'Sales', to: '/', icon: SalesIcon, end: true },
       { label: 'Add Sale', to: '/addsales', icon: AddSaleIcon },
+      { label: 'Inventory', to: '/inventory', icon: SnowflakeIcon },
     ],
   },
   {
