@@ -12,7 +12,7 @@ import { GetUser, JwtUser } from '../decorators/get-user.decorator';
 @ApiTags('Customer')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('CUSTOMER')
+@Roles('CUSTOMER', 'ADMIN')
 @Controller('customer')
 export class CustomerController {
   constructor(private readonly customerService: CustomerService) {}

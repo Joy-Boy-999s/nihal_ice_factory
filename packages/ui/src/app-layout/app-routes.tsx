@@ -46,11 +46,11 @@ const AdminRoute: React.FC = () => {
   return <Outlet />;
 };
 
-/* ── CustomerRoute — must be CUSTOMER ── */
+/* ── CustomerRoute — CUSTOMER or ADMIN ── */
 const CustomerRoute: React.FC = () => {
   const { authenticated, role } = useAuth();
   if (!authenticated) return <Navigate to="/login" replace />;
-  if (role !== 'CUSTOMER') return <Navigate to="/unauthorized" replace />;
+  if (role !== 'CUSTOMER' && role !== 'ADMIN') return <Navigate to="/unauthorized" replace />;
   return <Outlet />;
 };
 

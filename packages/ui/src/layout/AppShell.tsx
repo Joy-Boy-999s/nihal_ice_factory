@@ -33,11 +33,13 @@ export const AppShell: React.FC = () => {
 
   const visibleSections = useMemo<NavSection[]>(() => {
     const isCustomerRole = role === 'CUSTOMER';
+    const isAdmin = role === 'ADMIN';
     return NAV_SECTIONS.map((section) => ({
       ...section,
       items: section.items.filter((item) => {
         if (isCustomerRole) return !!item.customerOnly;
-        return !item.customerOnly && (!item.adminOnly || role === 'ADMIN');
+        if (isAdmin) return true; // admins see all nav items
+        return !item.customerOnly && !item.adminOnly;
       }),
     })).filter((section) => section.items.length > 0);
   }, [role]);
