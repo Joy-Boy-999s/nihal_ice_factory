@@ -16,6 +16,7 @@ const InventoryPage    = lazy(() => import('../pages/inventory/inventory'));
 const PaymentPage      = lazy(() => import('../pages/payment/PaymentPage'));
 const ShopPage         = lazy(() => import('../pages/shop/ShopPage'));
 const MyOrdersPage     = lazy(() => import('../pages/myOrders/MyOrdersPage'));
+const InvoicePage            = lazy(() => import('../pages/invoice/InvoicePage'));
 const NotFoundPage           = lazy(() => import('../pages/errors/NotFoundPage'));
 const UnauthorizedPage       = lazy(() => import('../pages/errors/UnauthorizedPage'));
 const CustomerDiscountsPage  = lazy(() => import('../pages/customerDiscounts/CustomerDiscountsPage'));
@@ -86,10 +87,14 @@ const AppRoutes: React.FC = () => {
             />
           </Route>
 
-          {/* Payment is accessible to both staff and customers */}
+          {/* Payment & Invoice accessible to customers and admins */}
           <Route
             path="/payment/:saleId"
             element={<LazyPage label="Loading payment..."><PaymentPage /></LazyPage>}
+          />
+          <Route
+            path="/invoice/:orderId"
+            element={<LazyPage label="Loading invoice..."><InvoicePage /></LazyPage>}
           />
 
           {/* ── Staff routes (non-CUSTOMER) ── */}

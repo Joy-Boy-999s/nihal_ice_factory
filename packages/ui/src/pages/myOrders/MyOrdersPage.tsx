@@ -137,10 +137,14 @@ const MyOrdersPage: React.FC = () => {
                           Pay Now
                         </Button>
                       )}
-                      {isPaid && order.payment?.razorpayPaymentId && (
-                        <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                          Ref: {order.payment.razorpayPaymentId.slice(-8)}
-                        </span>
+                      {isPaid && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => navigate(`/invoice/${order.id}`, { state: { order } })}
+                        >
+                          Get Invoice
+                        </Button>
                       )}
                     </div>
                   </div>
