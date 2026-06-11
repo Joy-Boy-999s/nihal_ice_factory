@@ -20,6 +20,17 @@
   gap: 4px;
 }
 
+/* Pay button in table rows — ghost success */
+.home-page__row-pay {
+  color: #059669 !important;
+  opacity: 0.8;
+}
+.home-page__row-pay:hover {
+  background: #d1fae5 !important;
+  color: #065f46 !important;
+  opacity: 1 !important;
+}
+
 /* Delete button in table rows — ghost danger */
 .home-page__row-delete {
   color: var(--color-danger) !important;
