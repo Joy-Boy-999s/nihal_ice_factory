@@ -41,6 +41,10 @@ export function isAdmin(): boolean {
   return getRole() === 'ADMIN';
 }
 
+export function isCustomer(): boolean {
+  return getRole() === 'CUSTOMER';
+}
+
 function subscribe(listener: Listener) {
   listeners.add(listener);
   window.addEventListener(EVENT, listener);

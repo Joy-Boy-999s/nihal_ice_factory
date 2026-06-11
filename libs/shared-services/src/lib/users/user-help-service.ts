@@ -12,6 +12,10 @@ export class UserHelpService extends CommonAxiosService {
     return await this.axiosPostCall(this.getURLwithMainEndPoint('createUser'), reqModel, config);
   }
 
+  async registerCustomer(reqModel: CreateUserModel, config?: AxiosRequestConfig): Promise<CommonResponse> {
+    return await this.axiosPostCall(this.getURLwithMainEndPoint('registerCustomer'), reqModel, config);
+  }
+
   async loginUser(reqModel: UserLoginModel, config?: AxiosRequestConfig): Promise<CommonResponse> {
     return await this.axiosPostCall(this.getURLwithMainEndPoint('loginUser'), reqModel, config);
   }

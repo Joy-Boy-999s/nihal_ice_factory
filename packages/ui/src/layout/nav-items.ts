@@ -1,10 +1,12 @@
 import React from 'react';
 import {
   AddSaleIcon,
+  ClipboardListIcon,
   DashboardIcon,
   FactoryIcon,
   PriceTagIcon,
   SalesIcon,
+  ShoppingCartIcon,
   UsersIcon,
 } from './nav-icons';
 
@@ -13,6 +15,7 @@ export interface NavItem {
   to: string;
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   adminOnly?: boolean;
+  customerOnly?: boolean;
   end?: boolean;
 }
 
@@ -22,10 +25,11 @@ export interface NavSection {
 }
 
 export const NAV_SECTIONS: NavSection[] = [
+  // ── Staff-facing ──────────────────────────────────────────────────────────
   {
     title: 'Operations',
     items: [
-      { label: 'Sales', to: '/', icon: SalesIcon, end: true },
+      { label: 'Sales',    to: '/',         icon: SalesIcon,   end: true },
       { label: 'Add Sale', to: '/addsales', icon: AddSaleIcon },
     ],
   },
@@ -38,9 +42,18 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Settings',
     items: [
-      { label: 'Plant Master', to: '/plant-master', icon: FactoryIcon, adminOnly: true },
+      { label: 'Plant Master', to: '/plant-master',    icon: FactoryIcon,  adminOnly: true },
       { label: 'Price Master', to: '/ice-price-master', icon: PriceTagIcon, adminOnly: true },
-      { label: 'Users', to: '/user-management', icon: UsersIcon, adminOnly: true },
+      { label: 'Users',        to: '/user-management',  icon: UsersIcon,    adminOnly: true },
+    ],
+  },
+
+  // ── Customer-facing ───────────────────────────────────────────────────────
+  {
+    title: 'Shop',
+    items: [
+      { label: 'Order Ice',  to: '/shop',      icon: ShoppingCartIcon, customerOnly: true },
+      { label: 'My Orders',  to: '/my-orders', icon: ClipboardListIcon, customerOnly: true },
     ],
   },
 ];

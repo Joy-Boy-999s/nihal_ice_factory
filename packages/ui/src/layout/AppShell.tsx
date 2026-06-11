@@ -31,14 +31,16 @@ export const AppShell: React.FC = () => {
     navigate('/login', { replace: true });
   };
 
-  const visibleSections = useMemo<NavSection[]>(
-    () =>
-      NAV_SECTIONS.map((section) => ({
-        ...section,
-        items: section.items.filter((item) => !item.adminOnly || role === 'ADMIN'),
-      })).filter((section) => section.items.length > 0),
-    [role],
-  );
+  const visibleSections = useMemo<NavSection[]>(() => {
+    const isCustomerRole = role === 'CUSTOMER';
+    return NAV_SECTIONS.map((section) => ({
+      ...section,
+      items: section.items.filter((item) => {
+        if (isCustomerRole) return !!item.customerOnly;
+        return !item.customerOnly && (!item.adminOnly || role === 'ADMIN');
+      }),
+    })).filter((section) => section.items.length > 0);
+  }, [role]);
 
   const pageTitle = useMemo(
     () => findPageTitle(location.pathname, visibleSections),

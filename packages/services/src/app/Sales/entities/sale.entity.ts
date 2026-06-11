@@ -54,4 +54,8 @@ export class Sale {
 
   @Column()
   soldBy: string;
+
+  /** Set when the sale is placed by a CUSTOMER account. Links the sale to a user. */
+  @Column({ nullable: true })
+  customerId?: string;
 }

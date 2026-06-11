@@ -13,32 +13,30 @@ const IcePriceMaster = lazy(() => import('../pages/icePriceMaster/IcePriceMaster
 const PlantMaster      = lazy(() => import('../pages/plantMaster/PlantMaster'));
 const UserManagement   = lazy(() => import('../pages/userManagement/UserManagement'));
 const PaymentPage      = lazy(() => import('../pages/payment/PaymentPage'));
+const ShopPage         = lazy(() => import('../pages/shop/ShopPage'));
+const MyOrdersPage     = lazy(() => import('../pages/myOrders/MyOrdersPage'));
 const NotFoundPage     = lazy(() => import('../pages/errors/NotFoundPage'));
 const UnauthorizedPage = lazy(() => import('../pages/errors/UnauthorizedPage'));
 
-const LazyPage: React.FC<{ children: React.ReactNode; label: string }> = ({
-  children,
-  label,
-}) => (
-  <Suspense fallback={<PageLoader label={label} />}>
-    {children}
-  </Suspense>
+const LazyPage: React.FC<{ children: React.ReactNode; label: string }> = ({ children, label }) => (
+  <Suspense fallback={<PageLoader label={label} />}>{children}</Suspense>
 );
 
-/* ────────────────────────────────────────────
-   ProtectedRoute — must be authenticated.
-   Unauthenticated → /login
-──────────────────────────────────────────── */
+/* ── ProtectedRoute — must be authenticated ── */
 const ProtectedRoute: React.FC = () => {
   const { authenticated } = useAuth();
   return authenticated ? <Outlet /> : <Navigate to="/login" replace />;
 };
 
-/* ────────────────────────────────────────────
-   AdminRoute — must be authenticated + ADMIN.
-   Not authenticated → /login
-   Authenticated but not ADMIN → /unauthorized (403 page)
-──────────────────────────────────────────── */
+/* ── StaffRoute — authenticated + NOT a CUSTOMER ── */
+const StaffRoute: React.FC = () => {
+  const { authenticated, role } = useAuth();
+  if (!authenticated) return <Navigate to="/login" replace />;
+  if (role === 'CUSTOMER') return <Navigate to="/shop" replace />;
+  return <Outlet />;
+};
+
+/* ── AdminRoute — must be ADMIN ── */
 const AdminRoute: React.FC = () => {
   const { authenticated, role } = useAuth();
   if (!authenticated) return <Navigate to="/login" replace />;
@@ -46,11 +44,17 @@ const AdminRoute: React.FC = () => {
   return <Outlet />;
 };
 
-/* ────────────────────────────────────────────
-   App route tree
-──────────────────────────────────────────── */
+/* ── CustomerRoute — must be CUSTOMER ── */
+const CustomerRoute: React.FC = () => {
+  const { authenticated, role } = useAuth();
+  if (!authenticated) return <Navigate to="/login" replace />;
+  if (role !== 'CUSTOMER') return <Navigate to="/unauthorized" replace />;
+  return <Outlet />;
+};
+
+/* ── App route tree ── */
 const AppRoutes: React.FC = () => {
-  const { authenticated } = useAuth();
+  const { authenticated, role } = useAuth();
 
   return (
     <Routes>
@@ -64,102 +68,83 @@ const AppRoutes: React.FC = () => {
         }
       />
 
-      {/* ── Protected (authenticated users only) ── */}
+      {/* ── All authenticated users ── */}
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>
 
-          {/* Sales — all authenticated users */}
-          <Route
-            path="/"
-            element={
-              <LazyPage label="Loading sales...">
-                <Home />
-              </LazyPage>
-            }
-          />
-
-          {/* Add Sale — all authenticated users */}
-          <Route
-            path="/addsales"
-            element={
-              <LazyPage label="Loading add sale form...">
-                <AddSale />
-              </LazyPage>
-            }
-          />
-
-          {/* Payment — all authenticated users */}
-          <Route
-            path="/payment/:saleId"
-            element={
-              <LazyPage label="Loading payment...">
-                <PaymentPage />
-              </LazyPage>
-            }
-          />
-
-          {/* Dashboard — ADMIN only; non-admins are redirected to /unauthorized */}
-          <Route element={<AdminRoute />}>
+          {/* ── Customer-only routes ── */}
+          <Route element={<CustomerRoute />}>
             <Route
-              path="/dashboard"
-              element={
-                <LazyPage label="Loading dashboard...">
-                  <Dashboard />
-                </LazyPage>
-              }
+              path="/shop"
+              element={<LazyPage label="Loading shop..."><ShopPage /></LazyPage>}
             />
             <Route
-              path="/ice-price-master"
-              element={
-                <LazyPage label="Loading price master...">
-                  <IcePriceMaster />
-                </LazyPage>
-              }
-            />
-            <Route
-              path="/plant-master"
-              element={
-                <LazyPage label="Loading plant master...">
-                  <PlantMaster />
-                </LazyPage>
-              }
-            />
-            <Route
-              path="/user-management"
-              element={
-                <LazyPage label="Loading user management...">
-                  <UserManagement />
-                </LazyPage>
-              }
+              path="/my-orders"
+              element={<LazyPage label="Loading my orders..."><MyOrdersPage /></LazyPage>}
             />
           </Route>
 
-          {/* 403 — Access Denied (shown inside the shell so nav is visible) */}
+          {/* Payment is accessible to both staff and customers */}
           <Route
-            path="/unauthorized"
-            element={
-              <LazyPage label="Loading...">
-                <UnauthorizedPage />
-              </LazyPage>
-            }
+            path="/payment/:saleId"
+            element={<LazyPage label="Loading payment..."><PaymentPage /></LazyPage>}
           />
 
-          {/* 404 — authenticated users hitting an unknown path */}
+          {/* ── Staff routes (non-CUSTOMER) ── */}
+          <Route element={<StaffRoute />}>
+            <Route
+              path="/"
+              element={<LazyPage label="Loading sales..."><Home /></LazyPage>}
+            />
+            <Route
+              path="/addsales"
+              element={<LazyPage label="Loading add sale form..."><AddSale /></LazyPage>}
+            />
+
+            {/* Admin-only */}
+            <Route element={<AdminRoute />}>
+              <Route
+                path="/dashboard"
+                element={<LazyPage label="Loading dashboard..."><Dashboard /></LazyPage>}
+              />
+              <Route
+                path="/ice-price-master"
+                element={<LazyPage label="Loading price master..."><IcePriceMaster /></LazyPage>}
+              />
+              <Route
+                path="/plant-master"
+                element={<LazyPage label="Loading plant master..."><PlantMaster /></LazyPage>}
+              />
+              <Route
+                path="/user-management"
+                element={<LazyPage label="Loading user management..."><UserManagement /></LazyPage>}
+              />
+            </Route>
+          </Route>
+
+          {/* 403 */}
+          <Route
+            path="/unauthorized"
+            element={<LazyPage label="Loading..."><UnauthorizedPage /></LazyPage>}
+          />
+
+          {/* 404 — authenticated users */}
           <Route
             path="*"
-            element={
-              <LazyPage label="Loading...">
-                <NotFoundPage />
-              </LazyPage>
-            }
+            element={<LazyPage label="Loading..."><NotFoundPage /></LazyPage>}
           />
         </Route>
       </Route>
 
-      {/* 404 fallback for unauthenticated users — send them to login */}
+      {/* 404 fallback for unauthenticated users */}
       <Route
         path="*"
-        element={<Navigate to={authenticated ? '/' : '/login'} replace />}
+        element={
+          <Navigate
+            to={authenticated ? (role === 'CUSTOMER' ? '/shop' : '/') : '/login'}
+            replace
+          />
+        }
       />
     </Routes>
   );

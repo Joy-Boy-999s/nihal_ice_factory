@@ -113,7 +113,15 @@ export class IceTypeService {
     }
   }
 
-  // ── Used by SalesService ─────────────────────────────────────────────────
+  // ── Used by SalesService / CustomerService ──────────────────────────────
+
+  /** Returns all active ice types across all plants, sorted by plant then name. */
+  async getActive(): Promise<IceType[]> {
+    return this.iceTypeRepository.find({
+      where: { isActive: true },
+      order: { plantUnit: 'ASC', iceTypeName: 'ASC' },
+    });
+  }
 
   /**
    * Returns all active IceType entries for a specific factory plant,

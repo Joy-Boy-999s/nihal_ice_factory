@@ -1,0 +1,207 @@
+.shop-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  animation: shop-enter 300ms ease both;
+}
+
+@keyframes shop-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Plant selector ── */
+.shop-plants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.25rem 0 0.5rem;
+}
+
+.shop-plant-btn {
+  padding: 0.5rem 1.25rem;
+  border-radius: 999px;
+  border: 2px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 120ms, background 120ms, color 120ms;
+}
+
+.shop-plant-btn:hover {
+  border-color: var(--color-primary, #2563eb);
+  color: var(--color-primary, #2563eb);
+}
+
+.shop-plant-btn--active {
+  border-color: var(--color-primary, #2563eb);
+  background: var(--color-primary, #2563eb);
+  color: #fff;
+}
+
+/* ── Ice type grid ── */
+.shop-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+  padding: 0.5rem 0;
+}
+
+.shop-item-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  border: 2px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-bg);
+  transition: border-color 120ms, box-shadow 120ms;
+}
+
+.shop-item-card:focus-within {
+  border-color: var(--color-primary, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37,99,235,.12);
+}
+
+.shop-item-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.shop-item-price {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.shop-item-price strong {
+  color: var(--color-primary, #2563eb);
+}
+
+.shop-item-subtotal {
+  font-size: 0.8rem;
+  color: #059669;
+  font-weight: 600;
+  min-height: 1.2em;
+}
+
+/* ── Customer info grid ── */
+.shop-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 560px) {
+  .shop-info-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Order totals ── */
+.shop-totals {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  background: var(--color-bg-muted, #f8fafc);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.shop-totals__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shop-totals__label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
+.shop-totals__value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.shop-totals__value--primary {
+  color: var(--color-primary, #2563eb);
+  font-size: 1.35rem;
+}
+
+/* ── Actions ── */
+.shop-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  padding-top: 0.25rem;
+}
+
+/* ── Success screen ── */
+.shop-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 2.5rem 1rem;
+  text-align: center;
+}
+
+.shop-success__icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: #d1fae5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #065f46;
+}
+
+.shop-success__title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.shop-success__sub {
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.shop-ref {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: var(--color-bg-muted, #f8fafc);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  font-size: 0.82rem;
+  width: 100%;
+  max-width: 420px;
+}
+
+.shop-ref__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.shop-ref__label { color: var(--color-text-muted); font-weight: 500; }
+.shop-ref__value { font-weight: 600; color: var(--color-text); word-break: break-all; text-align: right; }
+
+.shop-secure-note {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  margin-top: 0.25rem;
+}

@@ -11,6 +11,7 @@ import { IceTypeModule } from './IcePrice/ice-price.module';
 import { PlantModule } from './Plant/plant.module';
 import { IceSizeConversionModule } from './IceSizeConversion/ice-size-conversion.module';
 import { PaymentModule } from './Payment/payment.module';
+import { CustomerModule } from './Customer/customer.module';
 import { JwtStrategy } from './jwt.strategy';
 
 @Module({
@@ -32,6 +33,7 @@ import { JwtStrategy } from './jwt.strategy';
     PlantModule,
     IceSizeConversionModule,
     PaymentModule,
+    CustomerModule,
   ],
   controllers: [AppController],
   providers: [AppService, JwtStrategy],
