@@ -13,6 +13,7 @@ import { IceSizeConversionModule } from './IceSizeConversion/ice-size-conversion
 import { PaymentModule } from './Payment/payment.module';
 import { CustomerModule } from './Customer/customer.module';
 import { CustomerDiscountModule } from './CustomerDiscount/customer-discount.module';
+import { InventoryModule } from './Inventory/inventory.module';
 import { JwtStrategy } from './jwt.strategy';
 
 @Module({
@@ -36,6 +37,7 @@ import { JwtStrategy } from './jwt.strategy';
     PaymentModule,
     CustomerModule,
     CustomerDiscountModule,
+    InventoryModule,
   ],
   controllers: [AppController],
   providers: [AppService, JwtStrategy],

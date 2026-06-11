@@ -12,6 +12,7 @@ const AddSale        = lazy(() => import('../pages/addSales/addsale'));
 const IcePriceMaster = lazy(() => import('../pages/icePriceMaster/IcePriceMaster'));
 const PlantMaster      = lazy(() => import('../pages/plantMaster/PlantMaster'));
 const UserManagement   = lazy(() => import('../pages/userManagement/UserManagement'));
+const InventoryPage    = lazy(() => import('../pages/inventory/inventory'));
 const PaymentPage      = lazy(() => import('../pages/payment/PaymentPage'));
 const ShopPage         = lazy(() => import('../pages/shop/ShopPage'));
 const MyOrdersPage     = lazy(() => import('../pages/myOrders/MyOrdersPage'));
@@ -100,6 +101,10 @@ const AppRoutes: React.FC = () => {
             <Route
               path="/addsales"
               element={<LazyPage label="Loading add sale form..."><AddSale /></LazyPage>}
+            />
+            <Route
+              path="/inventory"
+              element={<LazyPage label="Loading inventory..."><InventoryPage /></LazyPage>}
             />
 
             {/* Admin-only */}

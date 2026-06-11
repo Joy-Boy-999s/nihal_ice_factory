@@ -7,6 +7,7 @@ import {
   PriceTagIcon,
   SalesIcon,
   ShoppingCartIcon,
+  SnowflakeIcon,
   UsersIcon,
 } from './nav-icons';
 
@@ -29,8 +30,9 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Operations',
     items: [
-      { label: 'Sales',    to: '/',         icon: SalesIcon,   end: true },
-      { label: 'Add Sale', to: '/addsales', icon: AddSaleIcon },
+      { label: 'Sales',     to: '/',          icon: SalesIcon,      end: true },
+      { label: 'Add Sale',  to: '/addsales',  icon: AddSaleIcon },
+      { label: 'Inventory', to: '/inventory', icon: SnowflakeIcon },
     ],
   },
   {
@@ -42,7 +44,7 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Settings',
     items: [
-      { label: 'Plant Master', to: '/plant-master',    icon: FactoryIcon,  adminOnly: true },
+      { label: 'Plant Master', to: '/plant-master',     icon: FactoryIcon,  adminOnly: true },
       { label: 'Price Master', to: '/ice-price-master', icon: PriceTagIcon, adminOnly: true },
       { label: 'Users',        to: '/user-management',  icon: UsersIcon,    adminOnly: true },
     ],
@@ -52,8 +54,8 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Shop',
     items: [
-      { label: 'Order Ice',  to: '/shop',      icon: ShoppingCartIcon, customerOnly: true },
-      { label: 'My Orders',  to: '/my-orders', icon: ClipboardListIcon, customerOnly: true },
+      { label: 'Order Ice', to: '/shop',      icon: ShoppingCartIcon, customerOnly: true },
+      { label: 'My Orders', to: '/my-orders', icon: ClipboardListIcon, customerOnly: true },
     ],
   },
 ];

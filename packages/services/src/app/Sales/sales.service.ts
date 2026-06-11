@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { In } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   CommonResponse,
   DashboardChartSeriesDto,
@@ -14,6 +14,10 @@ import { Sale, SaleItemSnapshot } from './entities/sale.entity';
 import { IceTypeService } from '../IcePrice/ice-price.service';
 import { IceType } from '../IcePrice/entities/ice-price.entity';
 import { PlantService } from '../Plant/plant.service';
+import { IceBatchRepository } from '../Inventory/repository/ice-batch.repository';
+import { IceSlotRepository } from '../Inventory/repository/ice-slot.repository';
+import { IceBatch } from '../Inventory/entities/ice-batch.entity';
+import { IceSlot } from '../Inventory/entities/ice-slot.entity';
 
 @Injectable()
 export class SalesService {
@@ -22,6 +26,8 @@ export class SalesService {
     private readonly transactionManager: GenericTransactionManager,
     private readonly iceTypeService: IceTypeService,
     private readonly plantService: PlantService,
+    private readonly batchRepo: IceBatchRepository,
+    private readonly slotRepo: IceSlotRepository,
   ) {}
 
   // ── Plant-access helpers ─────────────────────────────────────────────────
@@ -110,24 +116,120 @@ export class SalesService {
     return { snapshots, totalUnits, totalAmount };
   }
 
+  // ── Inventory helpers ─────────────────────────────────────────────────────
+
+  /**
+   * Returns available slot count per iceTypeId for a given plant.
+   * Only considers batches that have at least one available slot.
+   */
+  async getStockByPlant(plantUnit: string): Promise<{ iceTypeId: number; availableCount: number }[]> {
+    const batches = await this.batchRepo.find({ where: { plantUnit } });
+    const result: Map<number, number> = new Map();
+    for (const batch of batches) {
+      const prev = result.get(batch.iceTypeId) ?? 0;
+      result.set(batch.iceTypeId, prev + batch.availableCount);
+    }
+    return [...result.entries()].map(([iceTypeId, availableCount]) => ({ iceTypeId, availableCount }));
+  }
+
+  /**
+   * FIFO slot deduction inside an existing transaction.
+   * Marks the oldest available slots for each iceType as sold.
+   * Soft-fails if no inventory is configured (no batches) to preserve backwards compat.
+   * Throws if inventory exists but is insufficient.
+   */
+  private async deductInventorySlots(
+    txSlotRepo: Repository<IceSlot>,
+    txBatchRepo: Repository<IceBatch>,
+    plantUnit: string,
+    items: SaleItemInput[],
+    saleId: number,
+    soldBy: string,
+  ): Promise<void> {
+    const batches = await txBatchRepo.find({ where: { plantUnit } });
+    if (batches.length === 0) return; // no inventory configured — allow sale through
+
+    const now = new Date();
+
+    for (const item of items) {
+      const qty = item.quantity;
+      if (!qty || qty <= 0) continue;
+
+      // Collect available slots for this iceTypeId, FIFO (oldest batch → lowest slot id)
+      const batchIds = batches
+        .filter((b) => b.iceTypeId === item.iceTypeId && b.availableCount > 0)
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+        .map((b) => b.id);
+
+      if (batchIds.length === 0) continue; // ice type not in inventory — skip
+
+      const available = await txSlotRepo
+        .createQueryBuilder('slot')
+        .where('slot.batchId IN (:...batchIds)', { batchIds })
+        .andWhere('slot.status = :status', { status: 'available' })
+        .orderBy('slot.batchId', 'ASC')
+        .addOrderBy('slot.id', 'ASC')
+        .limit(qty)
+        .getMany();
+
+      if (available.length < qty) {
+        const found = available.length;
+        const iceTypeName = batches.find((b) => b.iceTypeId === item.iceTypeId)?.iceTypeName ?? `ID ${item.iceTypeId}`;
+        throw new Error(
+          `Not enough stock for "${iceTypeName}": requested ${qty}, available ${found}. ` +
+          `Please check inventory or add a new batch.`,
+        );
+      }
+
+      for (const slot of available) {
+        slot.status = 'sold';
+        slot.saleId = saleId;
+        slot.soldAt = now;
+        slot.soldBy = soldBy;
+      }
+      await txSlotRepo.save(available);
+
+      // Recalc each affected batch's counts
+      const affectedBatchIds = [...new Set(available.map((s) => s.batchId))];
+      for (const batchId of affectedBatchIds) {
+        const batch = await txBatchRepo.findOne({ where: { id: batchId } });
+        if (!batch) continue;
+        const [avail, sold, reserved, damaged] = await Promise.all([
+          txSlotRepo.count({ where: { batchId, status: 'available' } }),
+          txSlotRepo.count({ where: { batchId, status: 'sold' } }),
+          txSlotRepo.count({ where: { batchId, status: 'reserved' } }),
+          txSlotRepo.count({ where: { batchId, status: 'damaged' } }),
+        ]);
+        batch.availableCount = avail;
+        batch.soldCount      = sold;
+        batch.reservedCount  = reserved;
+        batch.damagedCount   = damaged;
+        if (sold + damaged >= batch.totalSlots) batch.status = 'sold_out';
+        await txBatchRepo.save(batch);
+      }
+    }
+  }
+
   // ── CRUD ─────────────────────────────────────────────────────────────────
 
   /**
    * Create a sale.
    * Non-admin users must be assigned to the target plant.
+   * Automatically deducts from inventory slots (FIFO) when batches exist.
    */
   async create(
     createSaleDto: CreateSaleDto,
     userId: string,
     isAdmin: boolean,
   ): Promise<CommonResponse> {
-    // Enforce plant access BEFORE opening a transaction.
     const denied = await this.checkPlantAccess(createSaleDto.unit, userId, isAdmin);
     if (denied) return denied;
 
     await this.transactionManager.startTransaction();
     try {
-      const saleRepo = this.transactionManager.getRepository(this.salesRepository);
+      const saleRepo  = this.transactionManager.getRepository(this.salesRepository);
+      const slotTx    = this.transactionManager.getRepository(this.slotRepo);
+      const batchTx   = this.transactionManager.getRepository(this.batchRepo);
 
       const { snapshots, totalUnits, totalAmount } = await this.buildSaleItems(
         createSaleDto.items,
@@ -150,12 +252,24 @@ export class SalesService {
       });
 
       const savedSale = await saleRepo.save(sale);
+
+      // Auto-deduct from inventory (FIFO). Soft-skips if no batches configured.
+      await this.deductInventorySlots(
+        slotTx,
+        batchTx,
+        createSaleDto.unit,
+        createSaleDto.items.filter((i) => i.quantity > 0),
+        savedSale.id,
+        createSaleDto.soldBy,
+      );
+
       await this.transactionManager.commitTransaction();
       return new CommonResponse(true, 201, 'Sale created successfully', savedSale);
     } catch (error) {
       await this.transactionManager.rollbackTransaction();
       const message = error instanceof Error ? error.message : 'Unknown error occurred';
-      return new CommonResponse(false, message.includes('required') ? 400 : 500, message, null);
+      const isStock = message.includes('Not enough stock');
+      return new CommonResponse(false, isStock ? 409 : (message.includes('required') ? 400 : 500), message, null);
     }
   }
 
