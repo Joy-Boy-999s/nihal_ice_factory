@@ -31,17 +31,21 @@ export class CustomerService {
     this.razorpay = new Razorpay({ key_id: this.keyId, key_secret: keySecret });
   }
 
-  /** Returns all active plants + their ice types for the shop page. */
-  async getShopData(): Promise<CommonResponse> {
+  /** Returns all active plants + their ice types + the customer's discount tiers. */
+  async getShopData(customerId: string): Promise<CommonResponse> {
     try {
-      const [plants, iceTypes] = await Promise.all([
+      const [plants, iceTypes, discountTiersRes] = await Promise.all([
         this.plantService.getAllActive(),
         this.iceTypeService.getActive(),
+        this.discountService.getTiers(customerId),
       ]);
+
+      const discountTiers = discountTiersRes.status ? (discountTiersRes.data ?? []) : [];
 
       return new CommonResponse(true, 200, 'Shop data fetched successfully', {
         plants,
         iceTypes,
+        discountTiers,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch shop data';

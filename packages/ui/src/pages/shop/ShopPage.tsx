@@ -18,6 +18,7 @@ declare global {
 /* ── Domain types ── */
 interface Plant  { id: number; plantName: string; isActive: boolean }
 interface IceType { id: number; iceTypeName: string; iceTypeCode: string; plantUnit: string; price: number }
+interface DiscountTier { id: number; minAmount: number; maxAmount: number; discountPercent: number }
 
 interface OrderItem { iceTypeId: number; iceTypeName: string; price: number; quantity: string }
 
@@ -62,17 +63,18 @@ const ShopPage: React.FC = () => {
   const svc         = useMemo(() => new CustomerHelpService(), []);
   const abortRef    = useRef(false);
 
-  const [pageStatus,   setPageStatus]   = useState<PageStatus>('loading');
-  const [plants,       setPlants]       = useState<Plant[]>([]);
-  const [allIceTypes,  setAllIceTypes]  = useState<IceType[]>([]);
-  const [selectedUnit, setSelectedUnit] = useState('');
-  const [orderItems,   setOrderItems]   = useState<OrderItem[]>([]);
-  const [name,         setName]         = useState('');
-  const [mobile,       setMobile]       = useState('');
-  const [address,      setAddress]      = useState('');
-  const [errors,       setErrors]       = useState<Record<string, string>>({});
-  const [lastOrder,    setLastOrder]    = useState<PlaceOrderResult | null>(null);
-  const [lastPayment,  setLastPayment]  = useState<PaymentRecord | null>(null);
+  const [pageStatus,     setPageStatus]     = useState<PageStatus>('loading');
+  const [plants,         setPlants]         = useState<Plant[]>([]);
+  const [allIceTypes,    setAllIceTypes]    = useState<IceType[]>([]);
+  const [discountTiers,  setDiscountTiers]  = useState<DiscountTier[]>([]);
+  const [selectedUnit,   setSelectedUnit]   = useState('');
+  const [orderItems,     setOrderItems]     = useState<OrderItem[]>([]);
+  const [name,           setName]           = useState('');
+  const [mobile,         setMobile]         = useState('');
+  const [address,        setAddress]        = useState('');
+  const [errors,         setErrors]         = useState<Record<string, string>>({});
+  const [lastOrder,      setLastOrder]      = useState<PlaceOrderResult | null>(null);
+  const [lastPayment,    setLastPayment]    = useState<PaymentRecord | null>(null);
 
   /* ── Auth error helper ── */
   const handleAuthError = useCallback((err: unknown): boolean => {
@@ -96,12 +98,14 @@ const ShopPage: React.FC = () => {
         if (!res?.status) throw new Error(res?.internalMessage || 'Failed to load shop');
 
         const env  = res.data as ResponsePayloadRecord | null;
-        const data = (env?.['data'] ?? env) as { plants?: Plant[]; iceTypes?: IceType[] } | null;
+        const data = (env?.['data'] ?? env) as { plants?: Plant[]; iceTypes?: IceType[]; discountTiers?: DiscountTier[] } | null;
 
-        const plantList   = Array.isArray(data?.plants)    ? data!.plants    : [];
-        const iceTypeList = Array.isArray(data?.iceTypes)  ? data!.iceTypes  : [];
+        const plantList    = Array.isArray(data?.plants)         ? data!.plants         : [];
+        const iceTypeList  = Array.isArray(data?.iceTypes)       ? data!.iceTypes       : [];
+        const tierList     = Array.isArray(data?.discountTiers)  ? data!.discountTiers  : [];
         setPlants(plantList);
         setAllIceTypes(iceTypeList);
+        setDiscountTiers(tierList);
         if (plantList.length > 0) selectPlant(plantList[0].plantName, iceTypeList);
         setPageStatus('idle');
       } catch (err) {
@@ -127,6 +131,22 @@ const ShopPage: React.FC = () => {
   const activeItems = orderItems.filter((i) => Number(i.quantity) > 0);
   const subtotal    = activeItems.reduce((s, i) => s + Number(i.quantity) * i.price, 0);
   const totalUnits  = activeItems.reduce((s, i) => s + Number(i.quantity), 0);
+
+  /* ── Live discount preview ── */
+  const previewDiscount = useMemo(() => {
+    if (subtotal <= 0 || discountTiers.length === 0) return { discountAmount: 0, discountPercent: 0 };
+    const tier = discountTiers.find(
+      (t) => subtotal >= Number(t.minAmount) && subtotal < Number(t.maxAmount),
+    );
+    if (!tier) return { discountAmount: 0, discountPercent: 0 };
+    const pct = Number(tier.discountPercent);
+    return {
+      discountPercent: pct,
+      discountAmount:  Math.round(subtotal * pct / 100 * 100) / 100,
+    };
+  }, [subtotal, discountTiers]);
+
+  const payableAmount = subtotal - previewDiscount.discountAmount;
 
   /* ── Validation ── */
   const validate = (): boolean => {
@@ -378,16 +398,24 @@ const ShopPage: React.FC = () => {
             <span className="shop-totals__value">{totalUnits}</span>
           </div>
           <div className="shop-totals__item">
-            <span className="shop-totals__label">Subtotal</span>
+            <span className="shop-totals__label">{previewDiscount.discountAmount > 0 ? 'Subtotal' : 'Total Amount'}</span>
             <span className="shop-totals__value">{formatCurrency(subtotal)}</span>
           </div>
         </div>
-        {lastOrder && lastOrder.discountAmount > 0 && (
+
+        {previewDiscount.discountAmount > 0 && (
           <div className="shop-discount-banner">
             <span className="shop-discount-banner__label">
-              Discount Applied ({lastOrder.discountPercent}%)
+              Discount ({previewDiscount.discountPercent}% applied automatically)
             </span>
-            <span className="shop-discount-banner__amount">−{formatCurrency(lastOrder.discountAmount)}</span>
+            <span className="shop-discount-banner__amount">−{formatCurrency(previewDiscount.discountAmount)}</span>
+          </div>
+        )}
+
+        {previewDiscount.discountAmount > 0 && (
+          <div className="shop-payable-row">
+            <span className="shop-payable-row__label">You Pay</span>
+            <span className="shop-payable-row__amount">{formatCurrency(payableAmount)}</span>
           </div>
         )}
 
@@ -397,7 +425,7 @@ const ShopPage: React.FC = () => {
             loading={pageStatus === 'processing'}
             disabled={pageStatus === 'processing' || subtotal === 0}
           >
-            Order &amp; Pay — {formatCurrency(subtotal)}
+            Order &amp; Pay — {formatCurrency(payableAmount > 0 ? payableAmount : subtotal)}
           </Button>
         </div>
         <p className="shop-secure-note">Secured by Razorpay. Accepts UPI, Cards, Net Banking &amp; Wallets.</p>

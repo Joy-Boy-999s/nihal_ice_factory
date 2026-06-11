@@ -159,6 +159,27 @@
   color: #059669;
 }
 
+.shop-payable-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem 0;
+}
+
+.shop-payable-row__label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.shop-payable-row__amount {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--color-primary, #2563eb);
+}
+
 /* ── Actions ── */
 .shop-actions {
   display: flex;

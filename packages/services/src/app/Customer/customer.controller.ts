@@ -17,11 +17,11 @@ import { GetUser, JwtUser } from '../decorators/get-user.decorator';
 export class CustomerController {
   constructor(private readonly customerService: CustomerService) {}
 
-  // GET /customer/shop — browse available plants and ice types
+  // GET /customer/shop — browse available plants, ice types, and this customer's discount tiers
   @Get('shop')
-  @ApiOperation({ summary: 'Get shop data: all active plants and ice types' })
-  async getShopData(): Promise<CommonResponse> {
-    return this.customerService.getShopData();
+  @ApiOperation({ summary: 'Get shop data: all active plants, ice types, and discount tiers' })
+  async getShopData(@GetUser() user: JwtUser): Promise<CommonResponse> {
+    return this.customerService.getShopData(user.userId);
   }
 
   // POST /customer/order — place an order and get a Razorpay checkout order
