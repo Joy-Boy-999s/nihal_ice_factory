@@ -2,13 +2,14 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CustomerHelpService } from '@nihal-ice-factory/shared-services';
 import type { ResponsePayloadRecord } from '@nihal-ice-factory/shared-models';
-import { Button, Card, PageHeader, useToast } from '../../components';
+import { Button, Card, PageHeader, PageLoader, useToast } from '../../components';
 import { buildAuthConfig, logout } from '../../lib/auth';
 import { formatCurrency } from '../../lib/pricing';
 import './styles/my-orders.css';
 
 /* ── Types ── */
 type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'NOT_INITIATED';
+type OrderFilter   = 'ALL' | 'PAID' | 'UNPAID';
 
 interface OrderItem { iceTypeName: string; quantity: number; price: number; subtotal: number }
 
@@ -30,10 +31,10 @@ interface CustomerOrder {
 /* ── Status badge ── */
 const StatusBadge: React.FC<{ status: PaymentStatus }> = ({ status }) => {
   const map: Record<PaymentStatus, { cls: string; label: string }> = {
-    PAID:          { cls: 'paid',          label: 'Paid'        },
-    PENDING:       { cls: 'pending',       label: 'Pending'     },
-    FAILED:        { cls: 'failed',        label: 'Failed'      },
-    NOT_INITIATED: { cls: 'not-initiated', label: 'Unpaid'      },
+    PAID:          { cls: 'paid',          label: 'Paid'    },
+    PENDING:       { cls: 'pending',       label: 'Pending' },
+    FAILED:        { cls: 'failed',        label: 'Failed'  },
+    NOT_INITIATED: { cls: 'not-initiated', label: 'Unpaid'  },
   };
   const { cls, label } = map[status] ?? { cls: 'not-initiated', label: status };
   return <span className={`order-status order-status--${cls}`}>{label}</span>;
@@ -47,6 +48,7 @@ const MyOrdersPage: React.FC = () => {
 
   const [orders,  setOrders]  = useState<CustomerOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filter,  setFilter]  = useState<OrderFilter>('ALL');
 
   const handleAuthError = useCallback((err: unknown): boolean => {
     const e = err as { response?: { status?: number } };
@@ -80,6 +82,26 @@ const MyOrdersPage: React.FC = () => {
     return () => { cancelled = true; };
   }, [svc, handleAuthError, toast]);
 
+  /* ── Derived stats + filtered list ── */
+  const stats = useMemo(() => {
+    const paid   = orders.filter((o) => o.paymentStatus === 'PAID');
+    const unpaid = orders.length - paid.length;
+    const spent  = paid.reduce((s, o) => s + Number(o.totalAmount), 0);
+    return { total: orders.length, paid: paid.length, unpaid, spent };
+  }, [orders]);
+
+  const visibleOrders = useMemo(() => {
+    if (filter === 'PAID')   return orders.filter((o) => o.paymentStatus === 'PAID');
+    if (filter === 'UNPAID') return orders.filter((o) => o.paymentStatus !== 'PAID');
+    return orders;
+  }, [orders, filter]);
+
+  const filterTabs: { key: OrderFilter; label: string; count: number }[] = [
+    { key: 'ALL',    label: 'All',    count: stats.total  },
+    { key: 'PAID',   label: 'Paid',   count: stats.paid   },
+    { key: 'UNPAID', label: 'Unpaid', count: stats.unpaid },
+  ];
+
   return (
     <div className="my-orders-page">
       <PageHeader
@@ -90,9 +112,52 @@ const MyOrdersPage: React.FC = () => {
         }
       />
 
-      <Card title={`Orders (${orders.length})`} padded={loading || orders.length === 0}>
+      {/* ── Stats row ── */}
+      {!loading && orders.length > 0 && (
+        <div className="mo-stats">
+          <div className="mo-stat">
+            <span className="mo-stat__label">Total Orders</span>
+            <span className="mo-stat__value">{stats.total}</span>
+          </div>
+          <div className="mo-stat">
+            <span className="mo-stat__label">Paid</span>
+            <span className="mo-stat__value mo-stat__value--paid">{stats.paid}</span>
+          </div>
+          <div className="mo-stat">
+            <span className="mo-stat__label">Unpaid</span>
+            <span className="mo-stat__value mo-stat__value--unpaid">{stats.unpaid}</span>
+          </div>
+          <div className="mo-stat">
+            <span className="mo-stat__label">Total Spent</span>
+            <span className="mo-stat__value mo-stat__value--spent">{formatCurrency(stats.spent)}</span>
+          </div>
+        </div>
+      )}
+
+      <Card
+        title="Orders"
+        padded={loading || visibleOrders.length === 0}
+        actions={
+          !loading && orders.length > 0 ? (
+            <div className="mo-filters" role="tablist" aria-label="Filter orders">
+              {filterTabs.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={filter === t.key}
+                  className={`mo-filter${filter === t.key ? ' mo-filter--active' : ''}`}
+                  onClick={() => setFilter(t.key)}
+                >
+                  {t.label} <i>{t.count}</i>
+                </button>
+              ))}
+            </div>
+          ) : undefined
+        }
+      >
         {loading ? (
-          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>Loading…</div>
+          <PageLoader size="sm" label="Loading your orders" />
         ) : orders.length === 0 ? (
           <div className="my-orders-empty">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35 }}>
@@ -103,18 +168,29 @@ const MyOrdersPage: React.FC = () => {
             <p className="my-orders-empty__sub">Place your first ice order and it'll appear here.</p>
             <Button size="sm" onClick={() => navigate('/shop')}>Shop Now</Button>
           </div>
+        ) : visibleOrders.length === 0 ? (
+          <div className="my-orders-empty">
+            <p className="my-orders-empty__title">No {filter === 'PAID' ? 'paid' : 'unpaid'} orders</p>
+            <p className="my-orders-empty__sub">Try a different filter.</p>
+          </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '0.25rem 0' }}>
-            {orders.map((order) => {
+          <div className="mo-grid">
+            {visibleOrders.map((order) => {
               const activeItems = (order.items ?? []).filter((i) => i.quantity > 0);
               const isPaid      = order.paymentStatus === 'PAID';
-              const canPay      = !isPaid;
               return (
                 <div key={order.id} className="order-card">
                   <div className="order-card__header">
-                    <div>
+                    <div className="order-card__head-info">
                       <div className="order-card__id">Order #{order.id}</div>
-                      <div className="order-card__meta">{order.date} at {order.time} &bull; {order.unit}</div>
+                      <div className="order-card__meta">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+                        </svg>
+                        {order.date} at {order.time}
+                        <span className="order-card__meta-sep">·</span>
+                        {order.unit}
+                      </div>
                     </div>
                     <StatusBadge status={order.paymentStatus} />
                   </div>
@@ -123,16 +199,19 @@ const MyOrdersPage: React.FC = () => {
                     <div className="order-card__items">
                       {activeItems.map((item, idx) => (
                         <span key={idx} className="order-card__item-chip">
-                          {item.iceTypeName} × {item.quantity}
+                          {item.iceTypeName} <b>× {item.quantity}</b>
                         </span>
                       ))}
                     </div>
                   )}
 
                   <div className="order-card__footer">
-                    <div className="order-card__amount">{formatCurrency(Number(order.totalAmount))}</div>
+                    <div className="order-card__amount-block">
+                      <span className="order-card__amount-label">Total</span>
+                      <span className="order-card__amount">{formatCurrency(Number(order.totalAmount))}</span>
+                    </div>
                     <div className="order-card__actions">
-                      {canPay && (
+                      {!isPaid && (
                         <Button size="sm" onClick={() => navigate(`/payment/${order.id}`)}>
                           Pay Now
                         </Button>

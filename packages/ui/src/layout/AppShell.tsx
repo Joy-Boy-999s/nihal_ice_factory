@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { logout, useAuth } from '../lib/auth';
-import { ChevronLeftIcon, ChevronRightIcon, MenuIcon, SnowflakeIcon } from './nav-icons';
+import { ChevronLeftIcon, ChevronRightIcon, MenuIcon } from './nav-icons';
 import { NAV_SECTIONS, type NavSection } from './nav-items';
 import { UserMenu } from './UserMenu';
 import { ThemeToggle } from '../components';
@@ -62,7 +62,37 @@ export const AppShell: React.FC = () => {
       <aside className="app-shell__sidebar" aria-label="Primary navigation">
         <div className="app-shell__brand">
           <span className="app-shell__brand-icon" aria-hidden>
-            <SnowflakeIcon width={22} height={22} />
+            <svg viewBox="0 0 64 64" width="36" height="36">
+              <defs>
+                <linearGradient id="nif-brand-bg" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#4f46e5" />
+                  <stop offset="55%" stopColor="#4338ca" />
+                  <stop offset="100%" stopColor="#06b6d4" />
+                </linearGradient>
+                <linearGradient id="nif-brand-shine" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#ffffff" stopOpacity="0.22" />
+                  <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+                </linearGradient>
+                <g id="nif-brand-arm" strokeLinecap="round">
+                  <line x1="32" y1="30" x2="32" y2="13" />
+                  <line x1="32" y1="17.5" x2="27" y2="13" />
+                  <line x1="32" y1="17.5" x2="37" y2="13" />
+                  <line x1="32" y1="24" x2="27.8" y2="20" />
+                  <line x1="32" y1="24" x2="36.2" y2="20" />
+                </g>
+              </defs>
+              <rect width="64" height="64" rx="14" fill="url(#nif-brand-bg)" />
+              <rect width="64" height="32" rx="14" fill="url(#nif-brand-shine)" />
+              <g stroke="#ffffff" strokeWidth="3" fill="none">
+                <use href="#nif-brand-arm" />
+                <use href="#nif-brand-arm" transform="rotate(60 32 32)" />
+                <use href="#nif-brand-arm" transform="rotate(120 32 32)" />
+                <use href="#nif-brand-arm" transform="rotate(180 32 32)" />
+                <use href="#nif-brand-arm" transform="rotate(240 32 32)" />
+                <use href="#nif-brand-arm" transform="rotate(300 32 32)" />
+              </g>
+              <circle cx="32" cy="32" r="3.4" fill="#ffffff" />
+            </svg>
           </span>
           {!collapsed && (
             <span className="app-shell__brand-name">
