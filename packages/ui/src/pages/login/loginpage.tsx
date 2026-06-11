@@ -9,7 +9,7 @@ import {
   ResetPassowordModel,
 } from '@nihal-ice-factory/shared-models';
 import { Button, Field, Input, Modal, useToast } from '../../components';
-import { login, isAuthenticated, isAdmin } from '../../lib/auth';
+import { login, isAuthenticated, isAdmin, isCustomer } from '../../lib/auth';
 import { SnowflakeIcon, MailIcon, LockIcon, UserIcon } from '../../layout/nav-icons';
 import './login.css';
 
@@ -61,7 +61,9 @@ const LoginPage: React.FC = () => {
 
   useEffect(() => {
     if (isAuthenticated()) {
-      navigate(isAdmin() ? '/dashboard' : '/', { replace: true });
+      if (isAdmin()) navigate('/dashboard', { replace: true });
+      else if (isCustomer()) navigate('/shop', { replace: true });
+      else navigate('/', { replace: true });
     }
   }, [navigate]);
 
@@ -94,9 +96,9 @@ const LoginPage: React.FC = () => {
           email: form.email,
           password: form.password,
           username: form.username,
-          role: UserRole.USER,
+          role: UserRole.CUSTOMER,
         };
-        const res: CommonResponse = await userService.createUser(req);
+        const res: CommonResponse = await userService.registerCustomer(req);
         if (res.status && res.errorCode === 201) {
           toast.success('Account created. Please sign in.');
           setMode('login');
@@ -112,7 +114,8 @@ const LoginPage: React.FC = () => {
           login(payload.accessToken, payload.user.role);
           toast.success('Signed in successfully');
           const role = String(payload.user.role).toUpperCase();
-          navigate(role === UserRole.ADMIN ? '/dashboard' : '/', { replace: true });
+          const dest = role === 'ADMIN' ? '/dashboard' : role === 'CUSTOMER' ? '/shop' : '/';
+          navigate(dest, { replace: true });
         } else {
           throw new Error(res.internalMessage || 'Invalid credentials');
         }
@@ -175,12 +178,12 @@ const LoginPage: React.FC = () => {
         </div>
 
         <h2 className="login-page__title">
-          {mode === 'register' ? 'Create your account' : 'Welcome back'}
+          {mode === 'register' ? 'Create customer account' : 'Welcome back'}
         </h2>
         <p className="login-page__subtitle">
           {mode === 'register'
-            ? 'Sign up to access the factory dashboard.'
-            : 'Sign in to continue to your workspace.'}
+            ? 'Sign up to order ice online and pay instantly.'
+            : 'Sign in to continue.'}
         </p>
 
         <form className="login-page__form" onSubmit={handleSubmit} noValidate>

@@ -22,7 +22,7 @@ import {
   useToast,
 } from '../../components';
 import { buildAuthConfig, getUserId, logout } from '../../lib/auth';
-import { EditIcon, PlusIcon, SearchIcon, ShieldIcon, TrashIcon, UserIcon } from '../../layout/nav-icons';
+import { EditIcon, PercentIcon, PlusIcon, SearchIcon, ShieldIcon, TrashIcon, UserIcon } from '../../layout/nav-icons';
 import './UserManagement.css';
 
 interface CatchError {
@@ -388,19 +388,27 @@ const UserManagement: React.FC = () => {
     {
       key: 'role',
       title: 'Role',
-      width: '100px',
+      width: '120px',
       render: (row) => {
-        const isAdmin = row.role.toUpperCase() === 'ADMIN';
+        const r = row.role.toUpperCase();
+        const isAdmin    = r === 'ADMIN';
+        const isCustomer = r === 'CUSTOMER';
+        const cls = isAdmin ? 'um-badge--admin' : isCustomer ? 'um-badge--customer' : 'um-badge--user';
         return (
-          <span className={`um-badge ${isAdmin ? 'um-badge--admin' : 'um-badge--user'}`}>
+          <span className={`um-badge ${cls}`}>
             {isAdmin ? (
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
               </svg>
+            ) : isCustomer ? (
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" />
+                <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+              </svg>
             ) : (
               <UserIcon width={10} height={10} />
             )}
-            {row.role}
+            {isCustomer ? 'Customer' : row.role}
           </span>
         );
       },
@@ -425,9 +433,10 @@ const UserManagement: React.FC = () => {
     {
       key: 'actions',
       title: 'Actions',
-      width: '260px',
+      width: '300px',
       render: (row) => {
         const isSelf = row.id === currentUserId;
+        const isCustomer = row.role.toUpperCase() === 'CUSTOMER';
         return (
           <div className="um-actions">
             <Button
@@ -440,14 +449,26 @@ const UserManagement: React.FC = () => {
               <ShieldIcon width={13} height={13} />
               Role
             </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => openAssign(row)}
-            >
-              <EditIcon width={13} height={13} />
-              Plants
-            </Button>
+            {isCustomer ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => navigate(`/customer-discounts/${row.id}`)}
+                title="Manage discount tiers"
+              >
+                <PercentIcon width={13} height={13} />
+                Discounts
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => openAssign(row)}
+              >
+                <EditIcon width={13} height={13} />
+                Plants
+              </Button>
+            )}
             <Button
               size="sm"
               variant="danger"
@@ -588,6 +609,7 @@ const UserManagement: React.FC = () => {
               options={[
                 { label: 'Operator (User)', value: UserRole.USER },
                 { label: 'Administrator', value: UserRole.ADMIN },
+                { label: 'Customer', value: UserRole.CUSTOMER },
               ]}
             />
           </Field>
@@ -664,6 +686,7 @@ const UserManagement: React.FC = () => {
               options={[
                 { label: 'Operator (User)', value: UserRole.USER },
                 { label: 'Administrator', value: UserRole.ADMIN },
+                { label: 'Customer', value: UserRole.CUSTOMER },
               ]}
             />
           </Field>

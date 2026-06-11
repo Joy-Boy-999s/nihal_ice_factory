@@ -378,3 +378,28 @@ export const PriceTagIcon: React.FC<IconProps> = (p) => (
     <line x1="7" y1="7" x2="7.01" y2="7" strokeWidth="2.5" strokeLinecap="round" />
   </svg>
 );
+
+export const ShoppingCartIcon: React.FC<IconProps> = (p) => (
+  <svg {...base} {...p}>
+    <circle cx="9" cy="21" r="1" />
+    <circle cx="20" cy="21" r="1" />
+    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+  </svg>
+);
+
+export const PercentIcon: React.FC<IconProps> = (p) => (
+  <svg {...base} {...p}>
+    <line x1="19" y1="5" x2="5" y2="19" />
+    <circle cx="6.5" cy="6.5" r="2.5" />
+    <circle cx="17.5" cy="17.5" r="2.5" />
+  </svg>
+);
+
+export const ClipboardListIcon: React.FC<IconProps> = (p) => (
+  <svg {...base} {...p}>
+    <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+    <line x1="9" y1="12" x2="15" y2="12" />
+    <line x1="9" y1="16" x2="13" y2="16" />
+  </svg>
+);

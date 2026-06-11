@@ -44,6 +44,7 @@ import {
   PersonIcon,
   PhoneIcon,
   StoreIcon,
+  IndianRupeeIcon,
 } from '../../layout/nav-icons';
 import './home.css';
 
@@ -786,7 +787,7 @@ const Home: React.FC = () => {
       key: 'actions',
       title: 'Actions',
       align: 'center',
-      width: 180,
+      width: 220,
       render: (row) => (
         <div className="home-page__row-actions">
           {isAdmin && (
@@ -796,6 +797,15 @@ const Home: React.FC = () => {
           )}
           <Button size="sm" variant="ghost" onClick={() => handlePrint(row)} leftIcon={<PrinterIcon width={13} height={13} />}>
             Print
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => navigate(`/payment/${row.id}`)}
+            leftIcon={<IndianRupeeIcon width={13} height={13} />}
+            className="home-page__row-pay"
+          >
+            Pay
           </Button>
           {isAdmin && (
             <Button

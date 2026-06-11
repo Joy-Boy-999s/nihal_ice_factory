@@ -56,6 +56,12 @@
   border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
 }
 
+.um-badge--customer {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #6ee7b7;
+}
+
 .um-badge--user {
   background: color-mix(in srgb, var(--color-text-muted) 12%, transparent);
   color: var(--color-text-muted);

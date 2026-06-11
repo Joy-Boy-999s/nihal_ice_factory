@@ -8,6 +8,7 @@ import {
   UpdateUserModel,
   UserIdRequestModel,
   UserLoginModel,
+  UserRole,
 } from '@nihal-ice-factory/shared-models';
 import { UserService } from './user.service';
 import { JwtAuthGuard } from '../jwt-auth.guard';
@@ -30,6 +31,18 @@ export class UserController {
       return await this.userService.createUser(reqModel);
     } catch (error) {
       return new CommonResponse(false, 1, 'User Creation Failed');
+    }
+  }
+
+  /** Public customer self-registration — role is always forced to CUSTOMER. */
+  @Post('registerCustomer')
+  @ApiBody({ type: CreateUserModel })
+  @ApiOperation({ summary: 'Customer self-registration (role forced to CUSTOMER)' })
+  async registerCustomer(@Body() reqModel: CreateUserModel): Promise<CommonResponse> {
+    try {
+      return await this.userService.createUser({ ...reqModel, role: UserRole.CUSTOMER });
+    } catch (error) {
+      return new CommonResponse(false, 1, 'Customer registration failed');
     }
   }
 

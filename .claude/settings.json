@@ -14,7 +14,15 @@
       "Bash(node --input-type=module -e ' *)",
       "Bash(ls packages/ui/*.json packages/ui/.env*)",
       "Bash(node -e \"console.log\\('react', require\\('react/package.json'\\).version\\); console.log\\('react-dom', require\\('react-dom/package.json'\\).version\\); console.log\\('vite', require\\('vite/package.json'\\).version\\); console.log\\('plugin-react', require\\('@vitejs/plugin-react/package.json'\\).version\\);\")",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(git fetch *)",
+      "Bash(git merge *)",
+      "Read(//home/user/nihal_ice_factory/libs/shared-services/src/**)",
+      "Read(//home/user/nihal_ice_factory/packages/services/src/app/**)",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ],
     "additionalDirectories": [
       "/tmp"

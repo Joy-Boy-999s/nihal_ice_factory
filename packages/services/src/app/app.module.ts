@@ -10,6 +10,10 @@ import { SalesModule } from './Sales/sales.module';
 import { IceTypeModule } from './IcePrice/ice-price.module';
 import { PlantModule } from './Plant/plant.module';
 import { IceSizeConversionModule } from './IceSizeConversion/ice-size-conversion.module';
+import { PaymentModule } from './Payment/payment.module';
+import { CustomerModule } from './Customer/customer.module';
+import { CustomerDiscountModule } from './CustomerDiscount/customer-discount.module';
+import { InventoryModule } from './Inventory/inventory.module';
 import { JwtStrategy } from './jwt.strategy';
 
 @Module({
@@ -30,6 +34,10 @@ import { JwtStrategy } from './jwt.strategy';
     IceTypeModule,
     PlantModule,
     IceSizeConversionModule,
+    PaymentModule,
+    CustomerModule,
+    CustomerDiscountModule,
+    InventoryModule,
   ],
   controllers: [AppController],
   providers: [AppService, JwtStrategy],
