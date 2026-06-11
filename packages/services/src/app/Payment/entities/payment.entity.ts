@@ -26,6 +26,9 @@ export class Payment {
   status: PaymentStatus;
 
   @Column({ nullable: true })
+  failureReason: string;
+
+  @Column({ nullable: true })
   customerName: string;
 
   @Column({ nullable: true })

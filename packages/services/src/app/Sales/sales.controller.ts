@@ -57,6 +57,16 @@ export class SalesController {
     return this.salesService.getAllSales(user.userId, user.role === 'ADMIN');
   }
 
+  // ── GET /sales/customer-orders ────────────────────────────────────────────
+  // Customer orders for the operator's accessible plants (admins see all).
+
+  @Get('customer-orders')
+  @ApiOperation({ summary: 'Customer orders for accessible plants, with payment + fulfillment status' })
+  @ApiResponse({ status: 200, type: CommonResponse })
+  async getCustomerOrders(@GetUser() user: JwtUser): Promise<CommonResponse> {
+    return this.salesService.getCustomerOrders(user.userId, user.role === 'ADMIN');
+  }
+
   // ── GET /sales/getDashboardMetrics ────────────────────────────────────────
   // Admin-only.
 

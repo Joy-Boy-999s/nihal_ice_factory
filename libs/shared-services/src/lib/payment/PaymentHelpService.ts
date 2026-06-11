@@ -27,4 +27,12 @@ export class PaymentHelpService extends CommonAxiosService {
   async getPaymentStatus(saleId: number, config?: AxiosRequestConfig): Promise<CommonResponse> {
     return this.axiosGetCall(this.ep(`status/${saleId}`), config);
   }
+
+  async reportPaymentFailed(
+    razorpayOrderId: string,
+    reason?: string,
+    config?: AxiosRequestConfig,
+  ): Promise<CommonResponse> {
+    return this.axiosPostCall(this.ep('failed'), { razorpayOrderId, reason }, config);
+  }
 }

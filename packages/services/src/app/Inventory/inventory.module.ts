@@ -10,6 +10,7 @@ import { IceSlot } from './entities/ice-slot.entity';
 import { IceTypeModule } from '../IcePrice/ice-price.module';
 import { PlantModule } from '../Plant/plant.module';
 import { SalesModule } from '../Sales/sales.module';
+import { NotificationModule } from '../Notification/notification.module';
 import { GenericTransactionManager } from '../../database/trasanction-manager';
 
 @Module({
@@ -18,6 +19,7 @@ import { GenericTransactionManager } from '../../database/trasanction-manager';
     IceTypeModule,
     PlantModule,
     SalesModule,
+    NotificationModule,
   ],
   controllers: [InventoryController],
   providers: [

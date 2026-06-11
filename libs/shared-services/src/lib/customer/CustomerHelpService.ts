@@ -8,6 +8,12 @@ export interface PlaceOrderPayload {
   mobile: string;
   address: string;
   items: { iceTypeId: number; quantity: number }[];
+  /** NORMAL (default) = same-day; ADVANCE = future delivery date. */
+  orderType?: 'NORMAL' | 'ADVANCE';
+  /** Required for ADVANCE orders (YYYY-MM-DD, must be a future date). */
+  deliveryDate?: string;
+  /** ONLINE (default) = Razorpay now; COD = pay on delivery. */
+  payMode?: 'ONLINE' | 'COD';
 }
 
 export class CustomerHelpService extends CommonAxiosService {

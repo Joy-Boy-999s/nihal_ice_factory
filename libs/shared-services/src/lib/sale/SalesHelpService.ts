@@ -19,6 +19,11 @@ export class SalesHelpService extends CommonAxiosService {
     return await this.axiosGetCall(this.getURLwithMainEndPoint('getAllSales'), config);
   }
 
+  /** Customer orders for accessible plants — operator Orders page. */
+  async getCustomerOrders(config?: AxiosRequestConfig): Promise<CommonResponse> {
+    return await this.axiosGetCall(this.getURLwithMainEndPoint('customer-orders'), config);
+  }
+
   async getDashboardMetrics(config?: AxiosRequestConfig): Promise<CommonResponse> {
     return await this.axiosGetCall(this.getURLwithMainEndPoint('getDashboardMetrics'), config);
   }

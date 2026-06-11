@@ -11,6 +11,8 @@ import { PaymentRepository } from '../Payment/repository/payment.repository';
 import { IceTypeModule } from '../IcePrice/ice-price.module';
 import { PlantModule } from '../Plant/plant.module';
 import { CustomerDiscountModule } from '../CustomerDiscount/customer-discount.module';
+import { InventoryModule } from '../Inventory/inventory.module';
+import { NotificationModule } from '../Notification/notification.module';
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { CustomerDiscountModule } from '../CustomerDiscount/customer-discount.mo
     IceTypeModule,
     PlantModule,
     CustomerDiscountModule,
+    InventoryModule,
+    NotificationModule,
   ],
   controllers: [CustomerController],
   providers: [CustomerService, SalesRepository, PaymentRepository],

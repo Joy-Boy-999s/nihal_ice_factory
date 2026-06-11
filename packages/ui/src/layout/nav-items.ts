@@ -32,6 +32,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: 'Sales',     to: '/',          icon: SalesIcon,      end: true },
       { label: 'Add Sale',  to: '/addsales',  icon: AddSaleIcon },
+      { label: 'Orders',    to: '/orders',    icon: ClipboardListIcon },
       { label: 'Inventory', to: '/inventory', icon: SnowflakeIcon },
     ],
   },

@@ -13,6 +13,7 @@ const IcePriceMaster = lazy(() => import('../pages/icePriceMaster/IcePriceMaster
 const PlantMaster      = lazy(() => import('../pages/plantMaster/PlantMaster'));
 const UserManagement   = lazy(() => import('../pages/userManagement/UserManagement'));
 const InventoryPage    = lazy(() => import('../pages/inventory/inventory'));
+const OrdersPage       = lazy(() => import('../pages/orders/OrdersPage'));
 const PaymentPage      = lazy(() => import('../pages/payment/PaymentPage'));
 const ShopPage         = lazy(() => import('../pages/shop/ShopPage'));
 const MyOrdersPage     = lazy(() => import('../pages/myOrders/MyOrdersPage'));
@@ -110,6 +111,10 @@ const AppRoutes: React.FC = () => {
             <Route
               path="/inventory"
               element={<LazyPage label="Loading inventory..."><InventoryPage /></LazyPage>}
+            />
+            <Route
+              path="/orders"
+              element={<LazyPage label="Loading orders..."><OrdersPage /></LazyPage>}
             />
 
             {/* Admin-only */}

@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsNumber, IsPositive, IsString, ValidateNested } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsArray, IsDateString, IsIn, IsNumber, IsOptional, IsPositive, IsString, ValidateNested } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CustomerOrderItemDto {
   @ApiProperty()
@@ -36,4 +36,19 @@ export class PlaceOrderDto {
   @ValidateNested({ each: true })
   @Type(() => CustomerOrderItemDto)
   items: CustomerOrderItemDto[];
+
+  @ApiPropertyOptional({ enum: ['NORMAL', 'ADVANCE'], default: 'NORMAL' })
+  @IsOptional()
+  @IsIn(['NORMAL', 'ADVANCE'])
+  orderType?: 'NORMAL' | 'ADVANCE';
+
+  @ApiPropertyOptional({ description: 'Requested delivery date (YYYY-MM-DD) — required for ADVANCE orders' })
+  @IsOptional()
+  @IsDateString()
+  deliveryDate?: string;
+
+  @ApiPropertyOptional({ enum: ['ONLINE', 'COD'], default: 'ONLINE', description: 'Pay now via Razorpay or on delivery' })
+  @IsOptional()
+  @IsIn(['ONLINE', 'COD'])
+  payMode?: 'ONLINE' | 'COD';
 }

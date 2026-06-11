@@ -24,7 +24,11 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
 
   app.use(bodyParser.urlencoded({ limit: configService.get('maxPayloadSize'), extended: true }));
-  app.use(bodyParser.json({ limit: configService.get('maxPayloadSize') }));
+  app.use(bodyParser.json({
+    limit: configService.get('maxPayloadSize'),
+    // Keep the raw bytes — Razorpay webhook signatures are computed over them
+    verify: (req: { rawBody?: Buffer }, _res, buf) => { req.rawBody = buf; },
+  }));
   app.useGlobalPipes(new ValidationPipe({ validationError: { target: false }, transform: true, forbidUnknownValues: false }));
   app.useGlobalInterceptors(new ClassSerializerInterceptor(reflector), new LoggingInterceptor());
   app.useGlobalFilters(new HttpExceptionFilter());

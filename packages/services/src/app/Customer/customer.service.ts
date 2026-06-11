@@ -11,7 +11,16 @@ import { PlantService } from '../Plant/plant.service';
 import { CustomerDiscountService } from '../CustomerDiscount/customer-discount.service';
 import { IceType } from '../IcePrice/entities/ice-price.entity';
 import { SaleItemSnapshot } from '../Sales/entities/sale.entity';
+import { InventoryService } from '../Inventory/inventory.service';
+import { NotificationService } from '../Notification/notification.service';
 import { In } from 'typeorm';
+
+/** End of the current local day — how long COD / paid order holds last. */
+function endOfToday(): Date {
+  const d = new Date();
+  d.setHours(23, 59, 59, 0);
+  return d;
+}
 
 @Injectable()
 export class CustomerService {
@@ -24,6 +33,8 @@ export class CustomerService {
     private readonly iceTypeService: IceTypeService,
     private readonly plantService: PlantService,
     private readonly discountService: CustomerDiscountService,
+    private readonly inventoryService: InventoryService,
+    private readonly notificationService: NotificationService,
     private readonly configService: ConfigService,
   ) {
     this.keyId = configService.get<string>('RAZORPAY_KEY_ID') ?? '';
@@ -31,13 +42,17 @@ export class CustomerService {
     this.razorpay = new Razorpay({ key_id: this.keyId, key_secret: keySecret });
   }
 
-  /** Returns all active plants + their ice types + the customer's discount tiers. */
+  /**
+   * Returns all active plants + their ice types + the customer's discount
+   * tiers + live stock per plant/ice type (with expected availability).
+   */
   async getShopData(customerId: string): Promise<CommonResponse> {
     try {
-      const [plants, iceTypes, discountTiersRes] = await Promise.all([
+      const [plants, iceTypes, discountTiersRes, stock] = await Promise.all([
         this.plantService.getAllActive(),
         this.iceTypeService.getActive(),
         this.discountService.getTiers(customerId),
+        this.inventoryService.getShopAvailability().catch(() => []),
       ]);
 
       const discountTiers = discountTiersRes.status ? (discountTiersRes.data ?? []) : [];
@@ -46,6 +61,7 @@ export class CustomerService {
         plants,
         iceTypes,
         discountTiers,
+        stock,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch shop data';
@@ -91,6 +107,42 @@ export class CustomerService {
         return new CommonResponse(false, 400, 'At least one item must have quantity > 0', null);
       }
 
+      const orderType = dto.orderType ?? 'NORMAL';
+      const payMode   = dto.payMode ?? 'ONLINE';
+
+      // ── Advance bookings: delivery date must be in the future ──
+      let deliveryDate: string | null = null;
+      if (orderType === 'ADVANCE') {
+        if (!dto.deliveryDate) {
+          return new CommonResponse(false, 400, 'Delivery date is required for advance bookings', null);
+        }
+        const today = new Date().toISOString().slice(0, 10);
+        deliveryDate = dto.deliveryDate.slice(0, 10);
+        if (deliveryDate <= today) {
+          return new CommonResponse(false, 400, 'Advance bookings must be for a future date', null);
+        }
+      }
+
+      // ── Normal orders: validate live stock before creating anything ──
+      if (orderType === 'NORMAL') {
+        const availability = await this.inventoryService.getAvailableCountByType(dto.unit);
+        if (availability.size > 0) {
+          const shortages = dto.items
+            .filter((i) => i.quantity > 0 && availability.has(i.iceTypeId))
+            .filter((i) => (availability.get(i.iceTypeId) ?? 0) < i.quantity)
+            .map((i) => ({
+              iceTypeId: i.iceTypeId,
+              iceTypeName: typeMap.get(i.iceTypeId)?.iceTypeName ?? `ID ${i.iceTypeId}`,
+              requested: i.quantity,
+              available: availability.get(i.iceTypeId) ?? 0,
+            }));
+          if (shortages.length > 0) {
+            const detail = shortages.map((s) => `${s.iceTypeName}: requested ${s.requested}, available ${s.available}`).join('; ');
+            return new CommonResponse(false, 409, `Insufficient stock — ${detail}`, { shortages });
+          }
+        }
+      }
+
       const now  = new Date();
       const date = now.toISOString().slice(0, 10);
       const time = now.toTimeString().slice(0, 5);
@@ -99,7 +151,7 @@ export class CustomerService {
       const { discountAmount, discountPercent } = await this.discountService.getDiscountForAmount(customerId, subtotal);
       const totalAmount = Math.round((subtotal - discountAmount) * 100) / 100;
 
-      // Create the sale record
+      // Create the sale record (PENDING — awaits operator fulfillment)
       const sale = this.salesRepo.create({
         date,
         time,
@@ -113,32 +165,89 @@ export class CustomerService {
         totalUnits,
         totalAmount,
         customerId,
+        orderType,
+        deliveryDate,
+        payMode,
+        fulfillmentStatus: 'PENDING',
       });
       const savedSale = await this.salesRepo.save(sale);
 
-      // Create Razorpay order (discounted amount in paise)
-      const amountPaise = Math.round(totalAmount * 100);
-      const order = await this.razorpay.orders.create({
-        amount:   amountPaise,
-        currency: 'INR',
-        receipt:  `cust_${savedSale.id}_${Date.now()}`,
-        notes: {
-          saleId:   String(savedSale.id),
-          customer: dto.name,
-          mobile:   dto.mobile,
-        },
-      });
+      // ── Normal orders: FIFO-hold the stock for this order ──
+      if (orderType === 'NORMAL') {
+        // ONLINE holds for the 30-min payment window (extended once paid);
+        // COD orders are confirmed immediately, so hold until end of day.
+        const reservedUntil = payMode === 'ONLINE' ? new Date(Date.now() + 30 * 60_000) : endOfToday();
+        try {
+          await this.inventoryService.reserveSlotsForOrder(
+            dto.unit,
+            dto.items.filter((i) => i.quantity > 0),
+            savedSale.id,
+            dto.name.trim(),
+            reservedUntil,
+          );
+        } catch (reserveErr) {
+          // Race lost between check and reserve — undo the sale
+          await this.salesRepo.delete({ id: savedSale.id });
+          const msg = reserveErr instanceof Error ? reserveErr.message : 'Insufficient stock';
+          return new CommonResponse(false, 409, msg, null);
+        }
+      }
 
-      // Persist pending payment record
-      const payment = this.paymentRepo.create({
-        saleId:          savedSale.id,
-        razorpayOrderId: order.id,
-        amount:          totalAmount,
-        status:          'PENDING',
-        customerName:    dto.name,
-        customerMobile:  dto.mobile,
-      });
-      await this.paymentRepo.save(payment);
+      // ── Payment: Razorpay order for ONLINE, nothing for COD ──
+      let razorpayData: Record<string, unknown> | null = null;
+      if (payMode === 'ONLINE') {
+        const amountPaise = Math.round(totalAmount * 100);
+        try {
+          const order = await this.razorpay.orders.create({
+            amount:   amountPaise,
+            currency: 'INR',
+            receipt:  `cust_${savedSale.id}_${Date.now()}`,
+            notes: {
+              saleId:   String(savedSale.id),
+              customer: dto.name,
+              mobile:   dto.mobile,
+            },
+          });
+
+          const payment = this.paymentRepo.create({
+            saleId:          savedSale.id,
+            razorpayOrderId: order.id,
+            amount:          totalAmount,
+            status:          'PENDING',
+            customerName:    dto.name,
+            customerMobile:  dto.mobile,
+          });
+          await this.paymentRepo.save(payment);
+
+          razorpayData = {
+            orderId:        order.id,
+            amount:         amountPaise,
+            currency:       'INR',
+            keyId:          this.keyId,
+            customerName:   dto.name,
+            customerMobile: dto.mobile,
+            description:    `Ice order #${savedSale.id} — ${dto.address}`,
+          };
+        } catch (rzErr) {
+          // Razorpay unavailable — undo the hold and the sale
+          await this.inventoryService.releaseSlotsForSale(savedSale.id);
+          await this.salesRepo.delete({ id: savedSale.id });
+          const msg = rzErr instanceof Error ? rzErr.message : 'Payment gateway error';
+          return new CommonResponse(false, 502, `Could not start payment: ${msg}`, null);
+        }
+      }
+
+      // ── Notify plant operators (never blocks the order) ──
+      const typeLabel = orderType === 'ADVANCE' ? `Advance booking for ${deliveryDate}` : 'New order';
+      await this.notificationService.notifyPlantOperators(
+        dto.unit,
+        'ORDER_PLACED',
+        `${typeLabel} #${savedSale.id} — ${dto.unit}`,
+        `${dto.name.trim()} ordered ${totalUnits} unit(s) for ₹${totalAmount}` +
+          (payMode === 'COD' ? ' (pay on delivery)' : '') +
+          (orderType === 'ADVANCE' ? ` — deliver on ${deliveryDate}` : ''),
+        { saleId: savedSale.id },
+      );
 
       return new CommonResponse(true, 201, 'Order placed successfully', {
         saleId:          savedSale.id,
@@ -147,16 +256,11 @@ export class CustomerService {
         discountPercent,
         totalAmount,
         totalUnits,
-        items:       snapshots,
-        razorpay: {
-          orderId:      order.id,
-          amount:       amountPaise,
-          currency:     'INR',
-          keyId:        this.keyId,
-          customerName: dto.name,
-          customerMobile: dto.mobile,
-          description:  `Ice order #${savedSale.id} — ${dto.address}`,
-        },
+        orderType,
+        deliveryDate,
+        payMode,
+        items:    snapshots,
+        razorpay: razorpayData,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to place order';
@@ -189,10 +293,31 @@ export class CustomerService {
       payment.status = 'PAID';
       await this.paymentRepo.save(payment);
 
+      await this.onPaymentPaid(payment.saleId);
+
       return new CommonResponse(true, 200, 'Payment verified successfully', payment);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Verification failed';
       return new CommonResponse(false, 500, message, null);
+    }
+  }
+
+  /** Post-payment hook: extend the stock hold to end of day + tell the operators. */
+  private async onPaymentPaid(saleId: number): Promise<void> {
+    try {
+      await this.inventoryService.extendReservationForSale(saleId, endOfToday());
+      const sale = await this.salesRepo.findOne({ where: { id: saleId } });
+      if (sale) {
+        await this.notificationService.notifyPlantOperators(
+          sale.unit,
+          'ORDER_PAID',
+          `Order #${sale.id} paid — ${sale.unit}`,
+          `${sale.name} paid ₹${sale.totalAmount} for order #${sale.id}.`,
+          { saleId: sale.id },
+        );
+      }
+    } catch {
+      // hooks must never break payment verification
     }
   }
 
@@ -213,6 +338,9 @@ export class CustomerService {
         where: { saleId: In(saleIds) },
         order: { createdAt: 'DESC' },
       });
+
+      // Abandoned checkouts (PENDING past TTL) become FAILED
+      await this.paymentRepo.expireStalePending(payments);
 
       // Map latest payment per saleId
       const paymentBySaleId = new Map<number, (typeof payments)[0]>();

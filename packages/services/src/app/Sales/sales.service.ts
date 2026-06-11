@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { In, Repository } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import { In, IsNull, Not, Repository } from 'typeorm';
 import {
   CommonResponse,
   DashboardChartSeriesDto,
@@ -18,6 +19,7 @@ import { IceBatchRepository } from '../Inventory/repository/ice-batch.repository
 import { IceSlotRepository } from '../Inventory/repository/ice-slot.repository';
 import { IceBatch } from '../Inventory/entities/ice-batch.entity';
 import { IceSlot } from '../Inventory/entities/ice-slot.entity';
+import { Payment } from '../Payment/entities/payment.entity';
 
 @Injectable()
 export class SalesService {
@@ -28,6 +30,7 @@ export class SalesService {
     private readonly plantService: PlantService,
     private readonly batchRepo: IceBatchRepository,
     private readonly slotRepo: IceSlotRepository,
+    @InjectRepository(Payment) private readonly paymentRepo: Repository<Payment>,
   ) {}
 
   // ── Plant-access helpers ─────────────────────────────────────────────────
@@ -342,6 +345,58 @@ export class SalesService {
       }
 
       return new CommonResponse(true, 200, 'Sales fetched successfully', sales);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error occurred';
+      return new CommonResponse(false, 500, message, null);
+    }
+  }
+
+  /**
+   * Customer orders for the plants this staff user can access.
+   * Includes payment status + fulfillment fields so operators can act on them.
+   */
+  async getCustomerOrders(userId: string, isAdmin: boolean): Promise<CommonResponse> {
+    try {
+      let sales: Sale[];
+
+      if (isAdmin) {
+        sales = await this.salesRepository.find({
+          where: { customerId: Not(IsNull()) },
+          order: { id: 'DESC' },
+        });
+      } else {
+        const names = await this.getAccessiblePlantNames(userId);
+        if (names.length === 0) {
+          return new CommonResponse(true, 200, 'Customer orders fetched successfully', []);
+        }
+        sales = await this.salesRepository.find({
+          where: { customerId: Not(IsNull()), unit: In(names) },
+          order: { id: 'DESC' },
+        });
+      }
+
+      if (sales.length === 0) {
+        return new CommonResponse(true, 200, 'Customer orders fetched successfully', []);
+      }
+
+      const saleIds = sales.map((s) => s.id);
+      const payments = await this.paymentRepo.find({
+        where: { saleId: In(saleIds) },
+        order: { createdAt: 'DESC' },
+      });
+
+      const latestPayment = new Map<number, Payment>();
+      for (const p of payments) {
+        if (!latestPayment.has(p.saleId)) latestPayment.set(p.saleId, p);
+      }
+
+      const orders = sales.map((sale) => ({
+        ...sale,
+        payment:       latestPayment.get(sale.id) ?? null,
+        paymentStatus: latestPayment.get(sale.id)?.status ?? 'NOT_INITIATED',
+      }));
+
+      return new CommonResponse(true, 200, 'Customer orders fetched successfully', orders);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error occurred';
       return new CommonResponse(false, 500, message, null);

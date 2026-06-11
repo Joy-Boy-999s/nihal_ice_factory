@@ -28,3 +28,5 @@ export { ToastProvider, useToast } from './Toast/Toast';
 export type { ToastVariant } from './Toast/Toast';
 
 export { ThemeToggle } from './ThemeToggle/ThemeToggle';
+
+export { NotificationBell } from './NotificationBell/NotificationBell';

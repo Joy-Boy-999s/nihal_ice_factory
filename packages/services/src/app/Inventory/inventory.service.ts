@@ -15,6 +15,7 @@ import { IceTypeService } from '../IcePrice/ice-price.service';
 import { PlantService } from '../Plant/plant.service';
 import { SalesRepository } from '../Sales/repository/sales.repository';
 import { GenericTransactionManager } from '../../database/trasanction-manager';
+import { NotificationService } from '../Notification/notification.service';
 
 /** Converts a numeric row index to a letter label: 0→A, 1→B, …, 25→Z, 26→AA */
 function rowLabel(row: number): string {
@@ -36,6 +37,7 @@ export class InventoryService {
     private readonly plantService: PlantService,
     private readonly salesRepo: SalesRepository,
     private readonly txManager: GenericTransactionManager,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // ── Plant access helpers ────────────────────────────────────────────────────
@@ -673,6 +675,290 @@ export class InventoryService {
       if (batch) await this.recalcBatchCounts(batch, this.slotRepo, this.batchRepo);
     }
     return expired.length;
+  }
+
+  // ── Customer-order integration ────────────────────────────────────────────
+
+  /**
+   * Available slot count per iceTypeId for a plant. Internal helper for the
+   * customer order flow — no access check (customers may order from any plant).
+   * Returns an empty map when the plant has no inventory configured.
+   */
+  async getAvailableCountByType(plantUnit: string): Promise<Map<number, number>> {
+    const batches = await this.batchRepo.find({ where: { plantUnit } });
+    const map = new Map<number, number>();
+    for (const b of batches) {
+      map.set(b.iceTypeId, (map.get(b.iceTypeId) ?? 0) + b.availableCount);
+    }
+    return map;
+  }
+
+  /**
+   * FIFO-reserves slots for a customer order (same picking order as staff
+   * sale deduction). Only enforces stock for ice types that have at least one
+   * batch in the plant — plants without inventory tracking stay unaffected.
+   * Throws Error('Not enough stock …') on shortfall.
+   */
+  async reserveSlotsForOrder(
+    plantUnit: string,
+    items: { iceTypeId: number; quantity: number }[],
+    saleId: number,
+    customerName: string,
+    reservedUntil: Date,
+  ): Promise<number> {
+    const batches = await this.batchRepo.find({ where: { plantUnit } });
+    if (batches.length === 0) return 0; // no inventory configured — allow order through
+
+    let reservedTotal = 0;
+
+    for (const item of items) {
+      const qty = item.quantity;
+      if (!qty || qty <= 0) continue;
+
+      const batchIds = batches
+        .filter((b) => b.iceTypeId === item.iceTypeId && b.availableCount > 0)
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+        .map((b) => b.id);
+
+      const hasAnyBatch = batches.some((b) => b.iceTypeId === item.iceTypeId);
+      if (!hasAnyBatch) continue; // ice type not tracked in inventory — skip
+
+      const available = batchIds.length === 0 ? [] : await this.slotRepo
+        .createQueryBuilder('slot')
+        .where('slot.batchId IN (:...batchIds)', { batchIds })
+        .andWhere('slot.status = :status', { status: 'available' })
+        .orderBy('slot.batchId', 'ASC')
+        .addOrderBy('slot.id', 'ASC')
+        .limit(qty)
+        .getMany();
+
+      if (available.length < qty) {
+        const iceTypeName = batches.find((b) => b.iceTypeId === item.iceTypeId)?.iceTypeName ?? `ID ${item.iceTypeId}`;
+        throw new Error(
+          `Not enough stock for "${iceTypeName}": requested ${qty}, available ${available.length}.`,
+        );
+      }
+
+      for (const slot of available) {
+        slot.status        = 'reserved';
+        slot.saleId        = saleId;
+        slot.reservedFor   = `Order #${saleId} — ${customerName}`.slice(0, 100);
+        slot.reservedUntil = reservedUntil;
+      }
+      await this.slotRepo.save(available);
+      reservedTotal += available.length;
+
+      const affected = [...new Set(available.map((s) => s.batchId))];
+      for (const batchId of affected) {
+        const batch = await this.batchRepo.findOne({ where: { id: batchId } });
+        if (batch) await this.recalcBatchCounts(batch, this.slotRepo, this.batchRepo);
+      }
+    }
+
+    return reservedTotal;
+  }
+
+  /** Releases all still-reserved slots held for a sale (payment failed / cancelled). */
+  async releaseSlotsForSale(saleId: number): Promise<number> {
+    const held = await this.slotRepo.find({ where: { saleId, status: 'reserved' } });
+    if (held.length === 0) return 0;
+
+    for (const slot of held) {
+      slot.status        = 'available';
+      slot.saleId        = null as unknown as number;
+      slot.reservedFor   = null;
+      slot.reservedUntil = null;
+    }
+    await this.slotRepo.save(held);
+
+    const batchIds = [...new Set(held.map((s) => s.batchId))];
+    for (const batchId of batchIds) {
+      const batch = await this.batchRepo.findOne({ where: { id: batchId } });
+      if (batch) await this.recalcBatchCounts(batch, this.slotRepo, this.batchRepo);
+    }
+    return held.length;
+  }
+
+  /** Extends the hold on a sale's reserved slots (e.g. after payment succeeds). */
+  async extendReservationForSale(saleId: number, until: Date): Promise<number> {
+    const result = await this.slotRepo.update(
+      { saleId, status: 'reserved' },
+      { reservedUntil: until },
+    );
+    return result.affected ?? 0;
+  }
+
+  /**
+   * Shop availability for customers: per plant per ice type — available count
+   * plus the expected next-availability time (earliest in-production readyAt,
+   * else earliest future estimatedNextBatchAt).
+   */
+  async getShopAvailability(): Promise<
+    { plantUnit: string; iceTypeId: number; availableCount: number; expectedAt: string | null }[]
+  > {
+    const batches = await this.batchRepo.find();
+    const now = Date.now();
+
+    const byKey = new Map<string, { plantUnit: string; iceTypeId: number; availableCount: number; expectedAt: string | null }>();
+
+    for (const b of batches) {
+      const key = `${b.plantUnit}::${b.iceTypeId}`;
+      let entry = byKey.get(key);
+      if (!entry) {
+        entry = { plantUnit: b.plantUnit, iceTypeId: b.iceTypeId, availableCount: 0, expectedAt: null };
+        byKey.set(key, entry);
+      }
+      entry.availableCount += b.availableCount;
+
+      // Candidate "expected availability" times from batches not yet sellable
+      const candidates: Date[] = [];
+      if (b.status === 'in_production' && b.readyAt) candidates.push(new Date(b.readyAt));
+      if (b.estimatedNextBatchAt) candidates.push(new Date(b.estimatedNextBatchAt));
+
+      for (const c of candidates) {
+        if (c.getTime() <= now) continue;
+        if (!entry.expectedAt || c < new Date(entry.expectedAt)) {
+          entry.expectedAt = c.toISOString();
+        }
+      }
+    }
+
+    return [...byKey.values()];
+  }
+
+  // ── Fulfill a customer order (operator hands over selected slots) ─────────
+
+  async fulfillOrder(
+    dto: { saleId: number; slotIds: number[] },
+    userId: string,
+    username: string,
+    isAdmin: boolean,
+  ): Promise<CommonResponse> {
+    const sale = await this.salesRepo.findOne({ where: { id: dto.saleId } });
+    if (!sale) return new CommonResponse(false, 404, `Order ${dto.saleId} not found`, null);
+    if (!sale.customerId) {
+      return new CommonResponse(false, 400, 'Only customer orders can be fulfilled here', null);
+    }
+    if (sale.fulfillmentStatus !== 'PENDING') {
+      return new CommonResponse(false, 409, `Order is already ${sale.fulfillmentStatus.toLowerCase()}`, null);
+    }
+
+    const denied = await this.checkPlantAccess(sale.unit, userId, isAdmin);
+    if (denied) return denied;
+
+    await this.txManager.startTransaction();
+    try {
+      const slotTx  = this.txManager.getRepository(this.slotRepo);
+      const batchTx = this.txManager.getRepository(this.batchRepo);
+      const saleTx  = this.txManager.getRepository(this.salesRepo);
+
+      const slots = await slotTx.find({ where: { id: In(dto.slotIds) } });
+      if (slots.length !== dto.slotIds.length) {
+        throw new BadRequestException('One or more slot IDs not found');
+      }
+
+      const wrongPlant = slots.filter((s) => s.plantUnit !== sale.unit);
+      if (wrongPlant.length) {
+        throw new BadRequestException(`Slots not in plant "${sale.unit}": ${wrongPlant.map((s) => s.slotLabel).join(', ')}`);
+      }
+
+      const unusable = slots.filter(
+        (s) => !(s.status === 'available' || (s.status === 'reserved' && s.saleId === sale.id)),
+      );
+      if (unusable.length) {
+        throw new BadRequestException(
+          `Slots not available: ${unusable.map((s) => `${s.slotLabel} (${s.status})`).join(', ')}`,
+        );
+      }
+
+      // Strict match: selected counts per ice type must equal the ordered
+      // quantities — but only for types tracked in this plant's inventory.
+      const batchIds = [...new Set(slots.map((s) => s.batchId))];
+      const slotBatches = batchIds.length === 0 ? [] : await batchTx.find({ where: { id: In(batchIds) } });
+      const batchTypeMap = new Map(slotBatches.map((b) => [b.id, b]));
+
+      const selectedByType = new Map<number, number>();
+      for (const slot of slots) {
+        const iceTypeId = batchTypeMap.get(slot.batchId)?.iceTypeId;
+        if (iceTypeId === undefined) throw new BadRequestException(`Batch ${slot.batchId} not found for slot ${slot.slotLabel}`);
+        selectedByType.set(iceTypeId, (selectedByType.get(iceTypeId) ?? 0) + 1);
+      }
+
+      const plantBatches = await batchTx.find({ where: { plantUnit: sale.unit } });
+      const trackedTypes = new Set(plantBatches.map((b) => b.iceTypeId));
+
+      const mismatches: string[] = [];
+      for (const item of sale.items) {
+        if (item.quantity <= 0 || !trackedTypes.has(item.iceTypeId)) continue;
+        const got = selectedByType.get(item.iceTypeId) ?? 0;
+        if (got !== item.quantity) {
+          mismatches.push(`${item.iceTypeName}: need ${item.quantity}, selected ${got}`);
+        }
+        selectedByType.delete(item.iceTypeId);
+      }
+      for (const [iceTypeId, got] of selectedByType) {
+        const name = batchTypeMap.get(slots.find((s) => batchTypeMap.get(s.batchId)?.iceTypeId === iceTypeId)?.batchId ?? -1)?.iceTypeName ?? `type ${iceTypeId}`;
+        mismatches.push(`${name}: not in this order, selected ${got}`);
+      }
+      if (mismatches.length) {
+        throw new BadRequestException(`Selection must match the order exactly — ${mismatches.join('; ')}`);
+      }
+
+      // Sell the selected slots
+      const now = new Date();
+      for (const slot of slots) {
+        slot.status        = 'sold';
+        slot.saleId        = sale.id;
+        slot.soldBy        = username;
+        slot.soldAt        = now;
+        slot.reservedFor   = null;
+        slot.reservedUntil = null;
+      }
+      await slotTx.save(slots);
+
+      // Release any other slots still held for this order (operator picked different ones)
+      const selectedIds = new Set(dto.slotIds);
+      const leftovers = (await slotTx.find({ where: { saleId: sale.id, status: 'reserved' } }))
+        .filter((s) => !selectedIds.has(s.id));
+      for (const slot of leftovers) {
+        slot.status        = 'available';
+        slot.saleId        = null as unknown as number;
+        slot.reservedFor   = null;
+        slot.reservedUntil = null;
+      }
+      if (leftovers.length) await slotTx.save(leftovers);
+
+      // Recalc all affected batches
+      const affected = [...new Set([...slots, ...leftovers].map((s) => s.batchId))];
+      for (const batchId of affected) {
+        const batch = await batchTx.findOne({ where: { id: batchId } });
+        if (batch) await this.recalcBatchCounts(batch, slotTx, batchTx);
+      }
+
+      sale.fulfillmentStatus = 'FULFILLED';
+      sale.fulfilledBy       = username;
+      sale.fulfilledAt       = now;
+      await saleTx.save(sale);
+
+      await this.txManager.commitTransaction();
+
+      await this.notificationService.notifyUsers(
+        [sale.customerId],
+        'ORDER_FULFILLED',
+        `Order #${sale.id} is ready`,
+        `Your ice order has been prepared and handed over by ${username} at ${sale.unit}.`,
+        { saleId: sale.id, plantUnit: sale.unit },
+      );
+
+      return new CommonResponse(true, 200, `Order #${sale.id} fulfilled — ${slots.length} slot(s) handed over`, {
+        sale,
+        slots,
+      });
+    } catch (err) {
+      await this.txManager.rollbackTransaction();
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      return new CommonResponse(false, err instanceof BadRequestException ? 400 : 500, msg, null);
+    }
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────

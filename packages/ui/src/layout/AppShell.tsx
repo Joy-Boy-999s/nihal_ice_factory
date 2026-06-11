@@ -5,6 +5,7 @@ import { ChevronLeftIcon, ChevronRightIcon, MenuIcon } from './nav-icons';
 import { NAV_SECTIONS, type NavSection } from './nav-items';
 import { UserMenu } from './UserMenu';
 import { ThemeToggle } from '../components';
+import { NotificationBell } from '../components/NotificationBell/NotificationBell';
 import './AppShell.css';
 
 const findPageTitle = (pathname: string, sections: NavSection[]): string => {
@@ -167,6 +168,7 @@ export const AppShell: React.FC = () => {
           </div>
 
           <div className="app-shell__topbar-right">
+            <NotificationBell />
             <ThemeToggle />
             <UserMenu role={role} onLogout={handleLogout} />
           </div>

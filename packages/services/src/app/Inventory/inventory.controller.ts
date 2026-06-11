@@ -21,6 +21,7 @@ import { CreateBatchDto } from './dto/create-batch.dto';
 import { SellSlotsDto } from './dto/sell-slots.dto';
 import { ReserveSlotsDto, ReleaseSlotsDto } from './dto/reserve-slots.dto';
 import { MarkDamagedDto } from './dto/mark-damaged.dto';
+import { FulfillOrderDto } from './dto/fulfill-order.dto';
 import { MarkBatchReadyDto, SetNextBatchDto } from './dto/batch-actions.dto';
 import { JwtAuthGuard } from '../jwt-auth.guard';
 import { RolesGuard } from '../guards/roles.guard';
@@ -120,6 +121,16 @@ export class InventoryController {
     @GetUser() user: JwtUser,
   ): Promise<CommonResponse> {
     return this.inventoryService.releaseSlots(dto, user.userId, user.role === 'ADMIN');
+  }
+
+  @Post('slots/fulfill')
+  @ApiOperation({ summary: 'Fulfill a customer order — selected slots are sold against the order (strict match)' })
+  @ApiBody({ type: FulfillOrderDto })
+  async fulfillOrder(
+    @Body() dto: FulfillOrderDto,
+    @GetUser() user: JwtUser,
+  ): Promise<CommonResponse> {
+    return this.inventoryService.fulfillOrder(dto, user.userId, user.username, user.role === 'ADMIN');
   }
 
   @Post('slots/markDamaged')

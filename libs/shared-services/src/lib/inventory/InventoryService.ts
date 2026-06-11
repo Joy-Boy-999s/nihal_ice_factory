@@ -104,6 +104,11 @@ export class InventoryService extends CommonAxiosService {
     return this.axiosGetCall(this.ep(`expiring?hours=${hours}`), config);
   }
 
+  /** Fulfill a customer order: selected slots are sold against the order (strict match). */
+  async fulfillOrder(payload: { saleId: number; slotIds: number[] }, config?: AxiosRequestConfig): Promise<CommonResponse> {
+    return this.axiosPostCall(this.ep('slots/fulfill'), payload, config);
+  }
+
   getStreamUrl(token: string): string {
     return this.buildUrl(this.ep(`stream?token=${encodeURIComponent(token)}`));
   }

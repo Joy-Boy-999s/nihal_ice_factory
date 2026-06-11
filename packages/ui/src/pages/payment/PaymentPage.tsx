@@ -10,8 +10,10 @@ import './styles/payment.css';
 /* ── Razorpay window type ── */
 declare global {
   interface Window {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    Razorpay: new (options: Record<string, unknown>) => { open: () => void };
+    Razorpay: new (options: Record<string, unknown>) => {
+      open: () => void;
+      on: (event: string, handler: (response: { error?: { description?: string; reason?: string } }) => void) => void;
+    };
   }
 }
 
@@ -184,6 +186,11 @@ const PaymentPage: React.FC = () => {
             setPageStatus('ready');
           },
         },
+      });
+
+      rzp.on('payment.failed', (resp) => {
+        const reason = resp?.error?.description || resp?.error?.reason || 'Payment failed at checkout';
+        paymentService.reportPaymentFailed(orderData.orderId, reason, authConfig).catch(() => {});
       });
 
       rzp.open();

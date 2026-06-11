@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiTags } from '@nestjs
 import { PaymentService } from './payment.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { VerifyPaymentDto } from './dto/verify-payment.dto';
+import { PaymentFailedDto } from './dto/payment-failed.dto';
 import { CommonResponse } from '@nihal-ice-factory/shared-models';
 import { JwtAuthGuard } from '../jwt-auth.guard';
 
@@ -27,6 +28,14 @@ export class PaymentController {
   @ApiOperation({ summary: 'Verify a Razorpay payment after checkout completes' })
   async verifyPayment(@Body() dto: VerifyPaymentDto): Promise<CommonResponse> {
     return this.paymentService.verifyPayment(dto);
+  }
+
+  // POST /payment/failed
+  @Post('failed')
+  @ApiBody({ type: PaymentFailedDto })
+  @ApiOperation({ summary: 'Record a failed Razorpay checkout attempt' })
+  async paymentFailed(@Body() dto: PaymentFailedDto): Promise<CommonResponse> {
+    return this.paymentService.markFailed(dto);
   }
 
   // GET /payment/status/:saleId

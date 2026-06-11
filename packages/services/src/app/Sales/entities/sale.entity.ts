@@ -1,5 +1,9 @@
 import { Entity, Column, PrimaryGeneratedColumn } from 'typeorm';
 
+export type OrderType         = 'NORMAL' | 'ADVANCE';
+export type PayMode           = 'ONLINE' | 'COD';
+export type FulfillmentStatus = 'PENDING' | 'FULFILLED' | 'CANCELLED';
+
 /** Snapshot of one line item stored inside a sale record. */
 export interface SaleItemSnapshot {
   iceTypeId:   number;
@@ -58,4 +62,29 @@ export class Sale {
   /** Set when the sale is placed by a CUSTOMER account. Links the sale to a user. */
   @Column({ nullable: true })
   customerId?: string;
+
+  /** NORMAL = same-day order; ADVANCE = booked for a future delivery date. */
+  @Column({ default: 'NORMAL' })
+  orderType: OrderType;
+
+  /** Requested delivery date — only set for ADVANCE orders. */
+  @Column({ type: 'date', nullable: true })
+  deliveryDate?: string | null;
+
+  /** How the customer chose to pay. Null for staff-created sales. */
+  @Column({ type: 'varchar', nullable: true })
+  payMode?: PayMode | null;
+
+  /**
+   * Defaults to FULFILLED so staff/inventory direct sales (handed over on the
+   * spot) and historical rows stay correct; customer orders set PENDING.
+   */
+  @Column({ default: 'FULFILLED' })
+  fulfillmentStatus: FulfillmentStatus;
+
+  @Column({ nullable: true })
+  fulfilledBy?: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  fulfilledAt?: Date | null;
 }

@@ -16,11 +16,12 @@ import { IceBatch } from '../Inventory/entities/ice-batch.entity';
 import { IceSlot } from '../Inventory/entities/ice-slot.entity';
 import { IceBatchRepository } from '../Inventory/repository/ice-batch.repository';
 import { IceSlotRepository } from '../Inventory/repository/ice-slot.repository';
+import { Payment } from '../Payment/entities/payment.entity';
 
 @Module({
   imports: [
     ConfigModule.forRoot(),
-    TypeOrmModule.forFeature([Sale, IceBatch, IceSlot]),
+    TypeOrmModule.forFeature([Sale, IceBatch, IceSlot, Payment]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

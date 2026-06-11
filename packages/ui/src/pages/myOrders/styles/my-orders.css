@@ -256,6 +256,50 @@
   border: 1px solid var(--color-border);
 }
 
+.order-status--preparing {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
+}
+
+.order-status--ready {
+  background: color-mix(in srgb, #10b981 14%, transparent);
+  color: var(--color-success, #059669);
+  border: 1px solid color-mix(in srgb, #10b981 35%, transparent);
+}
+
+/* ── Order tags (advance / COD) ── */
+.order-card__badges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.order-tag {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.order-tag--advance {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
+}
+
+.order-tag--cod {
+  background: color-mix(in srgb, #db2777 12%, transparent);
+  color: #db2777;
+  border: 1px solid color-mix(in srgb, #db2777 32%, transparent);
+}
+
 /* ── Empty state ── */
 .my-orders-empty {
   display: flex;

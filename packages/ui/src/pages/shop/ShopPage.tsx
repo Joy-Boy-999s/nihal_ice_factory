@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CustomerHelpService } from '@nihal-ice-factory/shared-services';
+import { CustomerHelpService, PaymentHelpService } from '@nihal-ice-factory/shared-services';
 import type { ResponsePayloadRecord } from '@nihal-ice-factory/shared-models';
 import { Button, Card, Field, Input, PageHeader, PageLoader, useToast } from '../../components';
 import { buildAuthConfig, logout } from '../../lib/auth';
@@ -10,8 +10,10 @@ import './styles/shop.css';
 /* ── Razorpay window type ── */
 declare global {
   interface Window {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    Razorpay: new (opts: Record<string, unknown>) => { open(): void };
+    Razorpay: new (options: Record<string, unknown>) => {
+      open: () => void;
+      on: (event: string, handler: (response: { error?: { description?: string; reason?: string } }) => void) => void;
+    };
   }
 }
 
@@ -19,6 +21,10 @@ declare global {
 interface Plant  { id: number; plantName: string; isActive: boolean }
 interface IceType { id: number; iceTypeName: string; iceTypeCode: string; plantUnit: string; price: number }
 interface DiscountTier { id: number; minAmount: number; maxAmount: number; discountPercent: number }
+interface StockInfo { plantUnit: string; iceTypeId: number; availableCount: number; expectedAt: string | null }
+
+type OrderType = 'NORMAL' | 'ADVANCE';
+type PayMode   = 'ONLINE' | 'COD';
 
 interface OrderItem { iceTypeId: number; iceTypeName: string; price: number; quantity: string }
 
@@ -33,8 +39,12 @@ interface PlaceOrderResult {
   discountAmount: number;
   discountPercent: number;
   totalAmount: number;
+  totalUnits: number;
+  orderType: OrderType;
+  deliveryDate: string | null;
+  payMode: PayMode;
   items: unknown[];
-  razorpay: RazorpayOrderData;
+  razorpay: RazorpayOrderData | null;
 }
 
 interface PaymentRecord { razorpayPaymentId: string; razorpayOrderId: string; amount: number }
@@ -61,12 +71,17 @@ const ShopPage: React.FC = () => {
   const navigate    = useNavigate();
   const toast       = useToast();
   const svc         = useMemo(() => new CustomerHelpService(), []);
+  const paySvc      = useMemo(() => new PaymentHelpService(), []);
   const abortRef    = useRef(false);
 
   const [pageStatus,     setPageStatus]     = useState<PageStatus>('loading');
   const [plants,         setPlants]         = useState<Plant[]>([]);
   const [allIceTypes,    setAllIceTypes]    = useState<IceType[]>([]);
   const [discountTiers,  setDiscountTiers]  = useState<DiscountTier[]>([]);
+  const [stock,          setStock]          = useState<StockInfo[]>([]);
+  const [orderType,      setOrderType]      = useState<OrderType>('NORMAL');
+  const [deliveryDate,   setDeliveryDate]   = useState('');
+  const [payMode,        setPayMode]        = useState<PayMode>('ONLINE');
   const [selectedUnit,   setSelectedUnit]   = useState('');
   const [orderItems,     setOrderItems]     = useState<OrderItem[]>([]);
   const [name,           setName]           = useState('');
@@ -91,34 +106,60 @@ const ShopPage: React.FC = () => {
   /* ── Preload Razorpay script in background on mount ── */
   useEffect(() => { loadRazorpayScript().catch(() => {}); }, []);
 
-  /* ── Fetch shop data on mount ── */
-  useEffect(() => {
-    abortRef.current = false;
-    (async () => {
-      try {
-        const res = await svc.getShopData(buildAuthConfig());
-        if (abortRef.current) return;
-        if (!res?.status) throw new Error(res?.internalMessage || 'Failed to load shop');
+  /* ── Fetch shop data (mount + refresh after stock conflicts) ── */
+  const fetchShop = async (initial: boolean) => {
+    try {
+      const res = await svc.getShopData(buildAuthConfig());
+      if (abortRef.current) return;
+      if (!res?.status) throw new Error(res?.internalMessage || 'Failed to load shop');
 
-        const env  = res.data as ResponsePayloadRecord | null;
-        const data = (env?.['data'] ?? env) as { plants?: Plant[]; iceTypes?: IceType[]; discountTiers?: DiscountTier[] } | null;
+      const env  = res.data as ResponsePayloadRecord | null;
+      const data = (env?.['data'] ?? env) as {
+        plants?: Plant[]; iceTypes?: IceType[]; discountTiers?: DiscountTier[]; stock?: StockInfo[];
+      } | null;
 
-        const plantList    = Array.isArray(data?.plants)         ? data!.plants         : [];
-        const iceTypeList  = Array.isArray(data?.iceTypes)       ? data!.iceTypes       : [];
-        const tierList     = Array.isArray(data?.discountTiers)  ? data!.discountTiers  : [];
-        setPlants(plantList);
-        setAllIceTypes(iceTypeList);
-        setDiscountTiers(tierList);
+      const plantList    = Array.isArray(data?.plants)         ? data!.plants         : [];
+      const iceTypeList  = Array.isArray(data?.iceTypes)       ? data!.iceTypes       : [];
+      const tierList     = Array.isArray(data?.discountTiers)  ? data!.discountTiers  : [];
+      const stockList    = Array.isArray(data?.stock)          ? data!.stock          : [];
+      setPlants(plantList);
+      setAllIceTypes(iceTypeList);
+      setDiscountTiers(tierList);
+      setStock(stockList);
+      if (initial) {
         if (plantList.length > 0) selectPlant(plantList[0].plantName, iceTypeList);
         setPageStatus('idle');
-      } catch (err) {
-        if (abortRef.current) return;
-        if (!handleAuthError(err)) setPageStatus('error');
       }
-    })();
+    } catch (err) {
+      if (abortRef.current) return;
+      if (!handleAuthError(err) && initial) setPageStatus('error');
+    }
+  };
+
+  useEffect(() => {
+    abortRef.current = false;
+    fetchShop(true);
     return () => { abortRef.current = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /* ── Stock lookup for the selected plant ── */
+  const stockFor = (iceTypeId: number): StockInfo | null =>
+    stock.find((s) => s.plantUnit === selectedUnit && s.iceTypeId === iceTypeId) ?? null;
+
+  /** Max orderable quantity in NORMAL mode; Infinity when untracked or ADVANCE. */
+  const maxQtyFor = (iceTypeId: number): number => {
+    if (orderType === 'ADVANCE') return Infinity;
+    const info = stockFor(iceTypeId);
+    return info ? info.availableCount : Infinity;
+  };
+
+  const formatExpected = (iso: string): string => {
+    const d = new Date(iso);
+    const today = new Date().toDateString() === d.toDateString();
+    const time = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+    return today ? `today ~${time}` : `${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} ~${time}`;
+  };
 
   const selectPlant = (unitName: string, iceTypes = allIceTypes) => {
     setSelectedUnit(unitName);
@@ -128,16 +169,30 @@ const ShopPage: React.FC = () => {
 
   const setQty = (iceTypeId: number, val: string) => {
     if (val !== '' && !/^\d*$/.test(val)) return;
-    setOrderItems((prev) => prev.map((i) => i.iceTypeId === iceTypeId ? { ...i, quantity: val } : i));
+    const max = maxQtyFor(iceTypeId);
+    const clamped = val !== '' && Number(val) > max ? String(max) : val;
+    setOrderItems((prev) => prev.map((i) => i.iceTypeId === iceTypeId ? { ...i, quantity: clamped } : i));
   };
 
   const bumpQty = (iceTypeId: number, delta: number) => {
+    const max = maxQtyFor(iceTypeId);
     setOrderItems((prev) => prev.map((i) => {
       if (i.iceTypeId !== iceTypeId) return i;
-      const next = Math.max(0, (Number(i.quantity) || 0) + delta);
+      const next = Math.min(max, Math.max(0, (Number(i.quantity) || 0) + delta));
       return { ...i, quantity: String(next) };
     }));
   };
+
+  /* Re-clamp quantities when switching back to NORMAL (stock caps apply again) */
+  useEffect(() => {
+    if (orderType !== 'NORMAL') return;
+    setOrderItems((prev) => prev.map((i) => {
+      const max = stock.find((s) => s.plantUnit === selectedUnit && s.iceTypeId === i.iceTypeId)?.availableCount;
+      if (max === undefined) return i;
+      return Number(i.quantity) > max ? { ...i, quantity: String(max) } : i;
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderType]);
 
   const activeItems = orderItems.filter((i) => Number(i.quantity) > 0);
   const subtotal    = activeItems.reduce((s, i) => s + Number(i.quantity) * i.price, 0);
@@ -181,6 +236,12 @@ const ShopPage: React.FC = () => {
     if (!address.trim())        e.address = 'Address / shop name is required';
     if (!selectedUnit)          e.unit    = 'Select a plant';
     if (activeItems.length === 0) e.items = 'Add at least one item';
+    if (orderType === 'ADVANCE') {
+      if (!deliveryDate) e.deliveryDate = 'Pick a delivery date';
+      else if (deliveryDate <= new Date().toISOString().slice(0, 10)) {
+        e.deliveryDate = 'Delivery date must be a future date';
+      }
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -191,21 +252,33 @@ const ShopPage: React.FC = () => {
     setPageStatus('processing');
     setErrors({});
     try {
-      await loadRazorpayScript(); // already cached — instant if preloaded
+      if (payMode === 'ONLINE') await loadRazorpayScript(); // already cached — instant if preloaded
 
       const res = await svc.placeOrder({
         unit: selectedUnit, name: name.trim(), mobile: mobile.trim(),
         address: address.trim(),
         items: activeItems.map((i) => ({ iceTypeId: i.iceTypeId, quantity: Number(i.quantity) })),
+        orderType,
+        deliveryDate: orderType === 'ADVANCE' ? deliveryDate : undefined,
+        payMode,
       }, buildAuthConfig());
 
       if (!res?.status) throw new Error(res?.internalMessage || 'Could not place order');
 
       const env  = res.data as ResponsePayloadRecord | null;
       const data = (env?.['data'] ?? env) as PlaceOrderResult | null;
-      if (!data?.razorpay?.orderId) throw new Error('Invalid order response from server');
+      if (!data?.saleId) throw new Error('Invalid order response from server');
 
       setLastOrder(data);
+
+      /* ── COD: no payment now — straight to confirmation ── */
+      if (payMode === 'COD' || !data.razorpay?.orderId) {
+        setLastPayment(null);
+        setPageStatus('success');
+        toast.success(orderType === 'ADVANCE' ? 'Advance booking placed!' : 'Order placed! Pay on delivery.');
+        return;
+      }
+
       const rz = data.razorpay;
 
       const rzp = new window.Razorpay({
@@ -237,30 +310,45 @@ const ShopPage: React.FC = () => {
         },
         modal: { ondismiss: () => setPageStatus('idle') },
       });
+      rzp.on('payment.failed', (resp) => {
+        const reason = resp?.error?.description || resp?.error?.reason || 'Payment failed at checkout';
+        paySvc.reportPaymentFailed(rz.orderId, reason, buildAuthConfig()).catch(() => {});
+      });
       rzp.open();
     } catch (err) {
       if (!handleAuthError(err)) {
-        toast.error(err instanceof Error ? err.message : 'Order failed');
+        const msg = err instanceof Error ? err.message : 'Order failed';
+        toast.error(msg);
         setPageStatus('idle');
+        // Stock changed between page load and order — refresh availability
+        if (/stock/i.test(msg)) fetchShop(false);
       }
     }
   };
 
   /* ── Success screen ── */
   if (pageStatus === 'success') {
+    const isCod     = lastOrder?.payMode === 'COD';
+    const isAdvance = lastOrder?.orderType === 'ADVANCE';
     return (
       <div className="shop-page">
         <PageHeader title="Order Ice" />
-        <Card title="Order Confirmed">
+        <Card title={isAdvance ? 'Booking Confirmed' : 'Order Confirmed'}>
           <div className="shop-success">
             <div className="shop-success__icon">
               <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             </div>
-            <h2 className="shop-success__title">Order &amp; Payment Successful!</h2>
+            <h2 className="shop-success__title">
+              {isAdvance ? 'Advance Booking Confirmed!' : isCod ? 'Order Placed!' : 'Order & Payment Successful!'}
+            </h2>
             <p className="shop-success__sub">
-              Your ice order has been placed and payment received. We'll deliver soon.
+              {isAdvance
+                ? `Your booking is confirmed for ${lastOrder?.deliveryDate ?? 'the selected date'}.${isCod ? ' Pay on delivery.' : ''}`
+                : isCod
+                  ? 'Your ice order has been placed. Pay when you receive your ice.'
+                  : "Your ice order has been placed and payment received. We'll deliver soon."}
             </p>
             {lastOrder && (
               <div className="shop-ref">
@@ -268,6 +356,12 @@ const ShopPage: React.FC = () => {
                   <span className="shop-ref__label">Order #</span>
                   <span className="shop-ref__value">{lastOrder.saleId}</span>
                 </div>
+                {isAdvance && lastOrder.deliveryDate && (
+                  <div className="shop-ref__row">
+                    <span className="shop-ref__label">Delivery Date</span>
+                    <span className="shop-ref__value">{lastOrder.deliveryDate}</span>
+                  </div>
+                )}
                 {lastOrder.discountAmount > 0 && (
                   <>
                     <div className="shop-ref__row">
@@ -281,7 +375,7 @@ const ShopPage: React.FC = () => {
                   </>
                 )}
                 <div className="shop-ref__row">
-                  <span className="shop-ref__label">Amount Paid</span>
+                  <span className="shop-ref__label">{isCod ? 'Payable on Delivery' : 'Amount Paid'}</span>
                   <span className="shop-ref__value">{formatCurrency(lastOrder.totalAmount)}</span>
                 </div>
                 {lastPayment?.razorpayPaymentId && (
@@ -304,7 +398,9 @@ const ShopPage: React.FC = () => {
                 setLastOrder(null);
                 setLastPayment(null);
                 setName(''); setMobile(''); setAddress('');
+                setOrderType('NORMAL'); setDeliveryDate(''); setPayMode('ONLINE');
                 setOrderItems((prev) => prev.map((i) => ({ ...i, quantity: '0' })));
+                fetchShop(false);
               }}>
                 Place Another Order
               </Button>
@@ -339,6 +435,7 @@ const ShopPage: React.FC = () => {
   }
 
   /* ── Main shop UI ── */
+  const ctaLabel = payMode === 'COD' ? 'Place Order' : 'Order & Pay';
   const payCta = (
     <Button
       block
@@ -347,9 +444,11 @@ const ShopPage: React.FC = () => {
       loading={pageStatus === 'processing'}
       disabled={pageStatus === 'processing' || subtotal === 0}
     >
-      Order &amp; Pay {subtotal > 0 ? `— ${formatCurrency(payableAmount)}` : ''}
+      {ctaLabel} {subtotal > 0 ? `— ${formatCurrency(payableAmount)}` : ''}
     </Button>
   );
+
+  const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
 
   return (
     <div className="shop-page">
@@ -358,6 +457,57 @@ const ShopPage: React.FC = () => {
         subtitle="Select a plant, choose quantities, and pay instantly"
         actions={<Button variant="secondary" onClick={() => navigate('/my-orders')}>My Orders</Button>}
       />
+
+      {/* ── Order type: now vs advance booking ── */}
+      <div className="shop-mode-bar">
+        <div className="shop-mode-toggle" role="tablist" aria-label="Order type">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={orderType === 'NORMAL'}
+            className={`shop-mode-btn${orderType === 'NORMAL' ? ' shop-mode-btn--active' : ''}`}
+            onClick={() => setOrderType('NORMAL')}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+            </svg>
+            Order Now
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={orderType === 'ADVANCE'}
+            className={`shop-mode-btn${orderType === 'ADVANCE' ? ' shop-mode-btn--active' : ''}`}
+            onClick={() => setOrderType('ADVANCE')}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+            Advance Booking
+          </button>
+        </div>
+
+        {orderType === 'ADVANCE' && (
+          <div className="shop-mode-date">
+            <label htmlFor="shop-delivery-date">Deliver on</label>
+            <input
+              id="shop-delivery-date"
+              type="date"
+              min={tomorrow}
+              value={deliveryDate}
+              onChange={(e) => { setDeliveryDate(e.target.value); setErrors((p) => ({ ...p, deliveryDate: '' })); }}
+              className={errors.deliveryDate ? 'shop-mode-date--invalid' : ''}
+            />
+            {errors.deliveryDate && <span className="shop-error-note" style={{ margin: 0 }}>{errors.deliveryDate}</span>}
+          </div>
+        )}
+
+        <p className="shop-mode-hint">
+          {orderType === 'NORMAL'
+            ? 'Same-day order from live stock — quantities are limited to what’s available now.'
+            : 'Book for a future date — no stock limits, the plant will produce for your booking.'}
+        </p>
+      </div>
 
       <div className="shop-layout">
         <div className="shop-main">
@@ -398,20 +548,41 @@ const ShopPage: React.FC = () => {
               ) : (
                 <div className="shop-items">
                   {orderItems.map((item) => {
-                    const qty = Number(item.quantity) || 0;
+                    const qty     = Number(item.quantity) || 0;
+                    const info    = stockFor(item.iceTypeId);
+                    const tracked = info !== null;
+                    const oos     = orderType === 'NORMAL' && tracked && info.availableCount === 0;
+                    const low     = orderType === 'NORMAL' && tracked && info.availableCount > 0 && info.availableCount <= 5;
                     return (
-                      <div key={item.iceTypeId} className={`shop-item-card${qty > 0 ? ' shop-item-card--active' : ''}`}>
+                      <div
+                        key={item.iceTypeId}
+                        className={`shop-item-card${qty > 0 ? ' shop-item-card--active' : ''}${oos ? ' shop-item-card--oos' : ''}`}
+                      >
                         <div className="shop-item-card__head">
-                          <div className="shop-item-name">{item.iceTypeName}</div>
+                          <div className="shop-item-name">
+                            {item.iceTypeName}
+                            {oos && <span className="shop-stock-badge shop-stock-badge--oos">Out of stock</span>}
+                            {low && <span className="shop-stock-badge shop-stock-badge--low">Only {info.availableCount} left</span>}
+                            {orderType === 'NORMAL' && tracked && !oos && !low && (
+                              <span className="shop-stock-badge shop-stock-badge--ok">{info.availableCount} in stock</span>
+                            )}
+                          </div>
                           <div className="shop-item-price"><strong>{formatCurrency(item.price)}</strong> <span>/ unit</span></div>
                         </div>
+                        {oos && (
+                          <div className="shop-item-expected">
+                            {info.expectedAt
+                              ? <>Expected back <strong>{formatExpected(info.expectedAt)}</strong> — or use Advance Booking</>
+                              : <>Currently unavailable — try Advance Booking for a future date</>}
+                          </div>
+                        )}
                         <div className="shop-item-card__controls">
                           <div className="shop-qty">
                             <button
                               type="button"
                               className="shop-qty__btn"
                               onClick={() => bumpQty(item.iceTypeId, -1)}
-                              disabled={qty <= 0}
+                              disabled={qty <= 0 || oos}
                               aria-label={`Decrease ${item.iceTypeName}`}
                             >
                               −
@@ -422,12 +593,14 @@ const ShopPage: React.FC = () => {
                               onChange={(e) => setQty(item.iceTypeId, e.target.value)}
                               inputMode="numeric"
                               placeholder="0"
+                              disabled={oos}
                               aria-label={`Quantity for ${item.iceTypeName}`}
                             />
                             <button
                               type="button"
                               className="shop-qty__btn"
                               onClick={() => bumpQty(item.iceTypeId, 1)}
+                              disabled={oos || (orderType === 'NORMAL' && tracked && qty >= info.availableCount)}
                               aria-label={`Increase ${item.iceTypeName}`}
                             >
                               +
@@ -514,13 +687,47 @@ const ShopPage: React.FC = () => {
               </div>
             )}
 
+            {/* ── Payment mode ── */}
+            <div className="shop-paymode" role="radiogroup" aria-label="Payment method">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={payMode === 'ONLINE'}
+                className={`shop-paymode__btn${payMode === 'ONLINE' ? ' shop-paymode__btn--active' : ''}`}
+                onClick={() => setPayMode('ONLINE')}
+              >
+                <span className="shop-paymode__radio" aria-hidden />
+                <span>
+                  <strong>Pay Now</strong>
+                  <small>UPI, Cards, Net Banking</small>
+                </span>
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={payMode === 'COD'}
+                className={`shop-paymode__btn${payMode === 'COD' ? ' shop-paymode__btn--active' : ''}`}
+                onClick={() => setPayMode('COD')}
+              >
+                <span className="shop-paymode__radio" aria-hidden />
+                <span>
+                  <strong>Pay on Delivery</strong>
+                  <small>Cash / UPI at handover</small>
+                </span>
+              </button>
+            </div>
+
             <div className="shop-summary__cta">{payCta}</div>
-            <p className="shop-secure-note">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
-              Secured by Razorpay · UPI, Cards, Net Banking &amp; Wallets
-            </p>
+            {payMode === 'ONLINE' ? (
+              <p className="shop-secure-note">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+                Secured by Razorpay · UPI, Cards, Net Banking &amp; Wallets
+              </p>
+            ) : (
+              <p className="shop-secure-note">Pay in cash or UPI when you collect your ice.</p>
+            )}
           </Card>
         </aside>
       </div>
@@ -537,7 +744,7 @@ const ShopPage: React.FC = () => {
             loading={pageStatus === 'processing'}
             disabled={pageStatus === 'processing'}
           >
-            Order &amp; Pay
+            {ctaLabel}
           </Button>
         </div>
       )}

@@ -14,6 +14,7 @@ import { PaymentModule } from './Payment/payment.module';
 import { CustomerModule } from './Customer/customer.module';
 import { CustomerDiscountModule } from './CustomerDiscount/customer-discount.module';
 import { InventoryModule } from './Inventory/inventory.module';
+import { NotificationModule } from './Notification/notification.module';
 import { JwtStrategy } from './jwt.strategy';
 
 @Module({
@@ -38,6 +39,7 @@ import { JwtStrategy } from './jwt.strategy';
     CustomerModule,
     CustomerDiscountModule,
     InventoryModule,
+    NotificationModule,
   ],
   controllers: [AppController],
   providers: [AppService, JwtStrategy],
