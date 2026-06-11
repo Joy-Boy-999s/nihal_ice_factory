@@ -88,6 +88,9 @@ const ShopPage: React.FC = () => {
     return false;
   }, [navigate, toast]);
 
+  /* ── Preload Razorpay script in background on mount ── */
+  useEffect(() => { loadRazorpayScript().catch(() => {}); }, []);
+
   /* ── Fetch shop data on mount ── */
   useEffect(() => {
     abortRef.current = false;
@@ -167,7 +170,7 @@ const ShopPage: React.FC = () => {
     setPageStatus('processing');
     setErrors({});
     try {
-      await loadRazorpayScript();
+      await loadRazorpayScript(); // already cached — instant if preloaded
 
       const res = await svc.placeOrder({
         unit: selectedUnit, name: name.trim(), mobile: mobile.trim(),
@@ -190,6 +193,27 @@ const ShopPage: React.FC = () => {
         order_id: rz.orderId,
         prefill: { name: rz.customerName, contact: rz.customerMobile },
         theme: { color: '#2563eb' },
+        method: {
+          upi: '1',
+          card: '1',
+          netbanking: '1',
+          wallet: '1',
+          emi: '0',
+        },
+        config: {
+          display: {
+            preferences: { show_default_blocks: true },
+            sequence: ['block.upi', 'block.other'],
+            blocks: {
+              upi:   { name: 'Pay via UPI', instruments: [{ method: 'upi' }] },
+              other: { name: 'Other Payment Methods', instruments: [
+                { method: 'card' },
+                { method: 'netbanking' },
+                { method: 'wallet' },
+              ]},
+            },
+          },
+        },
         handler: async (response: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
           try {
             const vRes = await svc.verifyPayment(
