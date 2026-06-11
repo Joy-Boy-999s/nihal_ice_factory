@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CustomerDiscountHelpService } from '@nihal-ice-factory/shared-services';
 import type { CreateDiscountTierDto, DiscountTier, ResponsePayloadRecord, UpdateDiscountTierDto } from '@nihal-ice-factory/shared-models';
-import { Button, Card, Field, Input, Modal, PageHeader, useToast } from '../../components';
+import { Button, Card, Field, Input, Modal, PageHeader, PageLoader, useToast } from '../../components';
 import { buildAuthConfig, logout } from '../../lib/auth';
 import { formatCurrency } from '../../lib/pricing';
 import { PlusIcon, TrashIcon, EditIcon } from '../../layout/nav-icons';
@@ -207,7 +207,7 @@ const CustomerDiscountsPage: React.FC = () => {
 
       <Card title={`Tiers (${tiers.length})`} padded={loading || tiers.length === 0}>
         {loading ? (
-          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>Loading…</div>
+          <PageLoader size="sm" label="Loading discount tiers" />
         ) : tiers.length === 0 ? (
           <div className="cd-empty">
             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35 }}>

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom';
 import { CustomerHelpService } from '@nihal-ice-factory/shared-services';
 import type { ResponsePayloadRecord } from '@nihal-ice-factory/shared-models';
-import { Button, Card, Field, Input, PageHeader, useToast } from '../../components';
+import { Button, Card, Field, Input, PageHeader, PageLoader, useToast } from '../../components';
 import { buildAuthConfig, logout } from '../../lib/auth';
 import { formatCurrency } from '../../lib/pricing';
 import './styles/shop.css';
@@ -131,6 +131,14 @@ const ShopPage: React.FC = () => {
     setOrderItems((prev) => prev.map((i) => i.iceTypeId === iceTypeId ? { ...i, quantity: val } : i));
   };
 
+  const bumpQty = (iceTypeId: number, delta: number) => {
+    setOrderItems((prev) => prev.map((i) => {
+      if (i.iceTypeId !== iceTypeId) return i;
+      const next = Math.max(0, (Number(i.quantity) || 0) + delta);
+      return { ...i, quantity: String(next) };
+    }));
+  };
+
   const activeItems = orderItems.filter((i) => Number(i.quantity) > 0);
   const subtotal    = activeItems.reduce((s, i) => s + Number(i.quantity) * i.price, 0);
   const totalUnits  = activeItems.reduce((s, i) => s + Number(i.quantity), 0);
@@ -150,6 +158,19 @@ const ShopPage: React.FC = () => {
   }, [subtotal, discountTiers]);
 
   const payableAmount = subtotal - previewDiscount.discountAmount;
+
+  /* ── "Add ₹X more to unlock Y% off" hint ── */
+  const nextTierHint = useMemo(() => {
+    if (discountTiers.length === 0 || subtotal <= 0) return null;
+    const next = discountTiers
+      .filter((t) => Number(t.minAmount) > subtotal && Number(t.discountPercent) > previewDiscount.discountPercent)
+      .sort((a, b) => Number(a.minAmount) - Number(b.minAmount))[0];
+    if (!next) return null;
+    return {
+      amountMore: Number(next.minAmount) - subtotal,
+      percent:    Number(next.discountPercent),
+    };
+  }, [discountTiers, subtotal, previewDiscount.discountPercent]);
 
   /* ── Validation ── */
   const validate = (): boolean => {
@@ -193,27 +214,6 @@ const ShopPage: React.FC = () => {
         order_id: rz.orderId,
         prefill: { name: rz.customerName, contact: rz.customerMobile },
         theme: { color: '#2563eb' },
-        method: {
-          upi: '1',
-          card: '1',
-          netbanking: '1',
-          wallet: '1',
-          emi: '0',
-        },
-        config: {
-          display: {
-            preferences: { show_default_blocks: true },
-            sequence: ['block.upi', 'block.other'],
-            blocks: {
-              upi:   { name: 'Pay via UPI', instruments: [{ method: 'upi' }] },
-              other: { name: 'Other Payment Methods', instruments: [
-                { method: 'card' },
-                { method: 'netbanking' },
-                { method: 'wallet' },
-              ]},
-            },
-          },
-        },
         handler: async (response: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
           try {
             const vRes = await svc.verifyPayment(
@@ -292,8 +292,13 @@ const ShopPage: React.FC = () => {
                 )}
               </div>
             )}
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center' }}>
               <Button onClick={() => navigate('/my-orders')}>View My Orders</Button>
+              {lastOrder && (
+                <Button variant="secondary" onClick={() => navigate(`/invoice/${lastOrder.saleId}`)}>
+                  Get Invoice
+                </Button>
+              )}
               <Button variant="secondary" onClick={() => {
                 setPageStatus('idle');
                 setLastOrder(null);
@@ -315,7 +320,7 @@ const ShopPage: React.FC = () => {
     return (
       <div className="shop-page">
         <PageHeader title="Order Ice" subtitle="Loading available ice types…" />
-        <Card title="Shop"><div style={{ padding: '3rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>Loading…</div></Card>
+        <Card title="Shop"><PageLoader size="sm" label="Preparing your shop" /></Card>
       </div>
     );
   }
@@ -334,6 +339,18 @@ const ShopPage: React.FC = () => {
   }
 
   /* ── Main shop UI ── */
+  const payCta = (
+    <Button
+      block
+      size="lg"
+      onClick={handleOrderAndPay}
+      loading={pageStatus === 'processing'}
+      disabled={pageStatus === 'processing' || subtotal === 0}
+    >
+      Order &amp; Pay {subtotal > 0 ? `— ${formatCurrency(payableAmount)}` : ''}
+    </Button>
+  );
+
   return (
     <div className="shop-page">
       <PageHeader
@@ -342,118 +359,188 @@ const ShopPage: React.FC = () => {
         actions={<Button variant="secondary" onClick={() => navigate('/my-orders')}>My Orders</Button>}
       />
 
-      {/* Step 1: Select plant */}
-      <Card title="Select Plant">
-        {plants.length === 0 ? (
-          <p style={{ color: 'var(--color-text-muted)', padding: '0.5rem 0' }}>No plants available right now.</p>
-        ) : (
-          <div className="shop-plants">
-            {plants.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                className={`shop-plant-btn${selectedUnit === p.plantName ? ' shop-plant-btn--active' : ''}`}
-                onClick={() => selectPlant(p.plantName)}
-              >
-                {p.plantName}
-              </button>
-            ))}
-          </div>
-        )}
-        {errors.unit && <p style={{ color: 'var(--color-error)', fontSize: '0.85rem', marginTop: '0.5rem' }}>{errors.unit}</p>}
-      </Card>
-
-      {/* Step 2: Choose quantities */}
-      {selectedUnit && (
-        <Card title={`Ice Types — ${selectedUnit}`}>
-          {orderItems.length === 0 ? (
-            <p style={{ color: 'var(--color-text-muted)' }}>No ice types configured for this plant yet.</p>
-          ) : (
-            <div className="shop-items">
-              {orderItems.map((item) => {
-                const qty = Number(item.quantity) || 0;
-                return (
-                  <div key={item.iceTypeId} className="shop-item-card">
-                    <div className="shop-item-name">{item.iceTypeName}</div>
-                    <div className="shop-item-price">Price: <strong>{formatCurrency(item.price)}</strong> / unit</div>
-                    <Input
-                      value={item.quantity}
-                      onChange={(e) => setQty(item.iceTypeId, e.target.value)}
-                      inputMode="numeric"
-                      placeholder="0"
-                      aria-label={`Quantity for ${item.iceTypeName}`}
-                    />
-                    {qty > 0 && (
-                      <div className="shop-item-subtotal">= {formatCurrency(qty * item.price)}</div>
+      <div className="shop-layout">
+        <div className="shop-main">
+          {/* Step 1: Select plant */}
+          <Card title={<span className="shop-step"><i className="shop-step__num">1</i>Select Plant</span>}>
+            {plants.length === 0 ? (
+              <p style={{ color: 'var(--color-text-muted)', padding: '0.5rem 0' }}>No plants available right now.</p>
+            ) : (
+              <div className="shop-plants">
+                {plants.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`shop-plant-btn${selectedUnit === p.plantName ? ' shop-plant-btn--active' : ''}`}
+                    onClick={() => selectPlant(p.plantName)}
+                  >
+                    {selectedUnit === p.plantName && (
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
                     )}
-                  </div>
-                );
-              })}
-            </div>
+                    {p.plantName}
+                  </button>
+                ))}
+              </div>
+            )}
+            {errors.unit && <p className="shop-error-note">{errors.unit}</p>}
+          </Card>
+
+          {/* Step 2: Choose quantities */}
+          {selectedUnit && (
+            <Card
+              title={<span className="shop-step"><i className="shop-step__num">2</i>Choose Quantities</span>}
+              subtitle={`Available at ${selectedUnit}`}
+            >
+              {orderItems.length === 0 ? (
+                <p style={{ color: 'var(--color-text-muted)' }}>No ice types configured for this plant yet.</p>
+              ) : (
+                <div className="shop-items">
+                  {orderItems.map((item) => {
+                    const qty = Number(item.quantity) || 0;
+                    return (
+                      <div key={item.iceTypeId} className={`shop-item-card${qty > 0 ? ' shop-item-card--active' : ''}`}>
+                        <div className="shop-item-card__head">
+                          <div className="shop-item-name">{item.iceTypeName}</div>
+                          <div className="shop-item-price"><strong>{formatCurrency(item.price)}</strong> <span>/ unit</span></div>
+                        </div>
+                        <div className="shop-item-card__controls">
+                          <div className="shop-qty">
+                            <button
+                              type="button"
+                              className="shop-qty__btn"
+                              onClick={() => bumpQty(item.iceTypeId, -1)}
+                              disabled={qty <= 0}
+                              aria-label={`Decrease ${item.iceTypeName}`}
+                            >
+                              −
+                            </button>
+                            <input
+                              className="shop-qty__input"
+                              value={item.quantity}
+                              onChange={(e) => setQty(item.iceTypeId, e.target.value)}
+                              inputMode="numeric"
+                              placeholder="0"
+                              aria-label={`Quantity for ${item.iceTypeName}`}
+                            />
+                            <button
+                              type="button"
+                              className="shop-qty__btn"
+                              onClick={() => bumpQty(item.iceTypeId, 1)}
+                              aria-label={`Increase ${item.iceTypeName}`}
+                            >
+                              +
+                            </button>
+                          </div>
+                          <div className={`shop-item-subtotal${qty > 0 ? ' shop-item-subtotal--visible' : ''}`}>
+                            {qty > 0 ? formatCurrency(qty * item.price) : ''}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {errors.items && <p className="shop-error-note">{errors.items}</p>}
+            </Card>
           )}
-          {errors.items && <p style={{ color: 'var(--color-error)', fontSize: '0.85rem', marginTop: '0.5rem' }}>{errors.items}</p>}
-        </Card>
-      )}
 
-      {/* Step 3: Customer details */}
-      <Card title="Your Details">
-        <div className="shop-info-grid">
-          <Field label="Full Name" required error={errors.name}>
-            <Input value={name} onChange={(e) => { setName(e.target.value); setErrors((p) => ({ ...p, name: '' })); }} invalid={!!errors.name} placeholder="Your name" />
-          </Field>
-          <Field label="Mobile Number" required error={errors.mobile}>
-            <Input value={mobile} onChange={(e) => { setMobile(e.target.value); setErrors((p) => ({ ...p, mobile: '' })); }} invalid={!!errors.mobile} inputMode="numeric" maxLength={10} placeholder="10-digit mobile" />
-          </Field>
-          <Field label="Shop / Delivery Address" required error={errors.address} style={{ gridColumn: '1 / -1' }}>
-            <Input value={address} onChange={(e) => { setAddress(e.target.value); setErrors((p) => ({ ...p, address: '' })); }} invalid={!!errors.address} placeholder="Shop name or delivery address" />
-          </Field>
-        </div>
-      </Card>
-
-      {/* Order totals + Pay button */}
-      <Card title="Order Summary">
-        <div className="shop-totals">
-          <div className="shop-totals__item">
-            <span className="shop-totals__label">Items</span>
-            <span className="shop-totals__value">{activeItems.length}</span>
-          </div>
-          <div className="shop-totals__item">
-            <span className="shop-totals__label">Total Units</span>
-            <span className="shop-totals__value">{totalUnits}</span>
-          </div>
-          <div className="shop-totals__item">
-            <span className="shop-totals__label">{previewDiscount.discountAmount > 0 ? 'Subtotal' : 'Total Amount'}</span>
-            <span className="shop-totals__value">{formatCurrency(subtotal)}</span>
-          </div>
+          {/* Step 3: Customer details */}
+          <Card title={<span className="shop-step"><i className="shop-step__num">3</i>Your Details</span>}>
+            <div className="shop-info-grid">
+              <Field label="Full Name" required error={errors.name}>
+                <Input value={name} onChange={(e) => { setName(e.target.value); setErrors((p) => ({ ...p, name: '' })); }} invalid={!!errors.name} placeholder="Your name" />
+              </Field>
+              <Field label="Mobile Number" required error={errors.mobile}>
+                <Input value={mobile} onChange={(e) => { setMobile(e.target.value); setErrors((p) => ({ ...p, mobile: '' })); }} invalid={!!errors.mobile} inputMode="numeric" maxLength={10} placeholder="10-digit mobile" />
+              </Field>
+              <Field label="Shop / Delivery Address" required error={errors.address} style={{ gridColumn: '1 / -1' }}>
+                <Input value={address} onChange={(e) => { setAddress(e.target.value); setErrors((p) => ({ ...p, address: '' })); }} invalid={!!errors.address} placeholder="Shop name or delivery address" />
+              </Field>
+            </div>
+          </Card>
         </div>
 
-        {previewDiscount.discountAmount > 0 && (
-          <div className="shop-discount-banner">
-            <span className="shop-discount-banner__label">
-              Discount ({previewDiscount.discountPercent}% applied automatically)
-            </span>
-            <span className="shop-discount-banner__amount">−{formatCurrency(previewDiscount.discountAmount)}</span>
-          </div>
-        )}
+        {/* Sticky order summary */}
+        <aside className="shop-side">
+          <Card title="Order Summary" className="shop-summary-card">
+            {activeItems.length === 0 ? (
+              <div className="shop-summary__empty">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" />
+                  <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+                </svg>
+                <p>Your order is empty.<br />Add quantities to see the total.</p>
+              </div>
+            ) : (
+              <>
+                <div className="shop-summary__items">
+                  {activeItems.map((i) => (
+                    <div key={i.iceTypeId} className="shop-summary__item">
+                      <span className="shop-summary__item-name">
+                        {i.iceTypeName} <em>× {Number(i.quantity)}</em>
+                      </span>
+                      <span className="shop-summary__item-amount">{formatCurrency(Number(i.quantity) * i.price)}</span>
+                    </div>
+                  ))}
+                </div>
 
-        {previewDiscount.discountAmount > 0 && (
-          <div className="shop-payable-row">
-            <span className="shop-payable-row__label">You Pay</span>
-            <span className="shop-payable-row__amount">{formatCurrency(payableAmount)}</span>
-          </div>
-        )}
+                <div className="shop-summary__rows">
+                  <div className="shop-summary__row">
+                    <span>Subtotal ({totalUnits} units)</span>
+                    <span>{formatCurrency(subtotal)}</span>
+                  </div>
+                  {previewDiscount.discountAmount > 0 && (
+                    <div className="shop-summary__row shop-summary__row--discount">
+                      <span>Discount ({previewDiscount.discountPercent}%)</span>
+                      <span>−{formatCurrency(previewDiscount.discountAmount)}</span>
+                    </div>
+                  )}
+                  <div className="shop-summary__row shop-summary__row--total">
+                    <span>You Pay</span>
+                    <span>{formatCurrency(payableAmount)}</span>
+                  </div>
+                </div>
+              </>
+            )}
 
-        <div className="shop-actions">
+            {nextTierHint && (
+              <div className="shop-tier-hint">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <line x1="19" y1="5" x2="5" y2="19" /><circle cx="6.5" cy="6.5" r="2.5" /><circle cx="17.5" cy="17.5" r="2.5" />
+                </svg>
+                Add <strong>{formatCurrency(nextTierHint.amountMore)}</strong> more to unlock <strong>{nextTierHint.percent}% off</strong>
+              </div>
+            )}
+
+            <div className="shop-summary__cta">{payCta}</div>
+            <p className="shop-secure-note">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+              Secured by Razorpay · UPI, Cards, Net Banking &amp; Wallets
+            </p>
+          </Card>
+        </aside>
+      </div>
+
+      {/* Mobile sticky pay bar */}
+      {subtotal > 0 && (
+        <div className="shop-paybar">
+          <div className="shop-paybar__total">
+            <span>You pay</span>
+            <strong>{formatCurrency(payableAmount)}</strong>
+          </div>
           <Button
             onClick={handleOrderAndPay}
             loading={pageStatus === 'processing'}
-            disabled={pageStatus === 'processing' || subtotal === 0}
+            disabled={pageStatus === 'processing'}
           >
-            Order &amp; Pay — {formatCurrency(payableAmount > 0 ? payableAmount : subtotal)}
+            Order &amp; Pay
           </Button>
         </div>
-        <p className="shop-secure-note">Secured by Razorpay. Accepts UPI, Cards, Net Banking &amp; Wallets.</p>
-      </Card>
+      )}
     </div>
   );
 };

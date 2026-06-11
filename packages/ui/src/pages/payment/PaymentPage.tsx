@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom';
 import { PaymentHelpService, SalesHelpService } from '@nihal-ice-factory/shared-services';
 import type { CreateOrderResponse, PaymentRecord, PaymentStatus, ResponsePayloadRecord } from '@nihal-ice-factory/shared-models';
-import { Button, Card, PageHeader, useToast } from '../../components';
+import { Button, Card, PageHeader, PageLoader, useToast } from '../../components';
 import { buildAuthConfig, logout } from '../../lib/auth';
 import { formatCurrency } from '../../lib/pricing';
 import './styles/payment.css';
@@ -219,9 +219,7 @@ const PaymentPage: React.FC = () => {
       <div className="payment-page">
         <PageHeader title="Payment" subtitle="Loading sale details…" />
         <Card title="Payment">
-          <div className="payment-spinner">
-            <span style={{ color: 'var(--color-text-muted)' }}>Loading…</span>
-          </div>
+          <PageLoader size="sm" label="Loading sale details" />
         </Card>
       </div>
     );

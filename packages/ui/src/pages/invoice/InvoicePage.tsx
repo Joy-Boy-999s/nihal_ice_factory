@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { CustomerHelpService } from '@nihal-ice-factory/shared-services';
 import type { ResponsePayloadRecord } from '@nihal-ice-factory/shared-models';
-import { Button, PageHeader, useToast } from '../../components';
+import { Button, PageHeader, PageLoader, useToast } from '../../components';
 import { buildAuthConfig, logout } from '../../lib/auth';
 import { formatCurrency } from '../../lib/pricing';
 import './styles/invoice.css';
@@ -66,9 +66,7 @@ const InvoicePage: React.FC = () => {
 
   const handlePrint = () => window.print();
 
-  if (loading) return (
-    <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>Loading invoice…</div>
-  );
+  if (loading) return <PageLoader label="Loading invoice" />;
   if (!order) return null;
 
   const activeItems = (order.items ?? []).filter((i) => i.quantity > 0);

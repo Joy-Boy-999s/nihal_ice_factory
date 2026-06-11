@@ -17,6 +17,7 @@ import {
   Input,
   Modal,
   PageHeader,
+  PageLoader,
   Select,
   useToast,
 } from '../../components';
@@ -490,7 +491,7 @@ const IcePriceMaster: React.FC = () => {
 
       {/* ── Conversions tab ── */}
       {activeTab === 'conversions' && (
-        <Suspense fallback={<div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>Loading…</div>}>
+        <Suspense fallback={<PageLoader size="sm" label="Loading conversions" />}>
           <ConversionTab iceTypes={prices} onSaved={handleConversionSaved} />
         </Suspense>
       )}
