@@ -1,2 +1,2 @@
 export * from './exception-handling'
-//export * from './logging'
+export * from './logging'
