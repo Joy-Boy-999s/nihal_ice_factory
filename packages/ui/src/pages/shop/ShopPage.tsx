@@ -27,7 +27,12 @@ interface RazorpayOrderData {
 }
 
 interface PlaceOrderResult {
-  saleId: number; totalAmount: number; items: unknown[];
+  saleId: number;
+  subtotal: number;
+  discountAmount: number;
+  discountPercent: number;
+  totalAmount: number;
+  items: unknown[];
   razorpay: RazorpayOrderData;
 }
 
@@ -219,6 +224,18 @@ const ShopPage: React.FC = () => {
                   <span className="shop-ref__label">Order #</span>
                   <span className="shop-ref__value">{lastOrder.saleId}</span>
                 </div>
+                {lastOrder.discountAmount > 0 && (
+                  <>
+                    <div className="shop-ref__row">
+                      <span className="shop-ref__label">Subtotal</span>
+                      <span className="shop-ref__value">{formatCurrency(lastOrder.subtotal)}</span>
+                    </div>
+                    <div className="shop-ref__row">
+                      <span className="shop-ref__label">Discount ({lastOrder.discountPercent}%)</span>
+                      <span className="shop-ref__value" style={{ color: '#059669' }}>−{formatCurrency(lastOrder.discountAmount)}</span>
+                    </div>
+                  </>
+                )}
                 <div className="shop-ref__row">
                   <span className="shop-ref__label">Amount Paid</span>
                   <span className="shop-ref__value">{formatCurrency(lastOrder.totalAmount)}</span>
@@ -361,10 +378,18 @@ const ShopPage: React.FC = () => {
             <span className="shop-totals__value">{totalUnits}</span>
           </div>
           <div className="shop-totals__item">
-            <span className="shop-totals__label">Total Amount</span>
-            <span className="shop-totals__value shop-totals__value--primary">{formatCurrency(subtotal)}</span>
+            <span className="shop-totals__label">Subtotal</span>
+            <span className="shop-totals__value">{formatCurrency(subtotal)}</span>
           </div>
         </div>
+        {lastOrder && lastOrder.discountAmount > 0 && (
+          <div className="shop-discount-banner">
+            <span className="shop-discount-banner__label">
+              Discount Applied ({lastOrder.discountPercent}%)
+            </span>
+            <span className="shop-discount-banner__amount">−{formatCurrency(lastOrder.discountAmount)}</span>
+          </div>
+        )}
 
         <div className="shop-actions">
           <Button

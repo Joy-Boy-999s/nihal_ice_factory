@@ -136,6 +136,29 @@
   font-size: 1.35rem;
 }
 
+/* ── Discount banner ── */
+.shop-discount-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1rem;
+  margin-top: 0.75rem;
+  border-radius: 8px;
+  background: #d1fae5;
+  border: 1px solid #6ee7b7;
+  font-size: 0.85rem;
+}
+
+.shop-discount-banner__label {
+  font-weight: 600;
+  color: #065f46;
+}
+
+.shop-discount-banner__amount {
+  font-weight: 700;
+  color: #059669;
+}
+
 /* ── Actions ── */
 .shop-actions {
   display: flex;

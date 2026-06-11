@@ -8,6 +8,7 @@ import { SalesRepository } from '../Sales/repository/sales.repository';
 import { PaymentRepository } from '../Payment/repository/payment.repository';
 import { IceTypeService } from '../IcePrice/ice-price.service';
 import { PlantService } from '../Plant/plant.service';
+import { CustomerDiscountService } from '../CustomerDiscount/customer-discount.service';
 import { IceType } from '../IcePrice/entities/ice-price.entity';
 import { SaleItemSnapshot } from '../Sales/entities/sale.entity';
 import { In } from 'typeorm';
@@ -22,6 +23,7 @@ export class CustomerService {
     private readonly paymentRepo: PaymentRepository,
     private readonly iceTypeService: IceTypeService,
     private readonly plantService: PlantService,
+    private readonly discountService: CustomerDiscountService,
     private readonly configService: ConfigService,
   ) {
     this.keyId = configService.get<string>('RAZORPAY_KEY_ID') ?? '';
@@ -89,6 +91,10 @@ export class CustomerService {
       const date = now.toISOString().slice(0, 10);
       const time = now.toTimeString().slice(0, 5);
 
+      // Apply per-customer tiered discount
+      const { discountAmount, discountPercent } = await this.discountService.getDiscountForAmount(customerId, subtotal);
+      const totalAmount = Math.round((subtotal - discountAmount) * 100) / 100;
+
       // Create the sale record
       const sale = this.salesRepo.create({
         date,
@@ -98,16 +104,16 @@ export class CustomerService {
         mobile:     dto.mobile.trim(),
         shop:       dto.address.trim(),
         soldBy:     customerUsername,
-        discount:   0,
+        discount:   discountAmount,
         items:      snapshots,
         totalUnits,
-        totalAmount: subtotal,
+        totalAmount,
         customerId,
       });
       const savedSale = await this.salesRepo.save(sale);
 
-      // Create Razorpay order
-      const amountPaise = Math.round(subtotal * 100);
+      // Create Razorpay order (discounted amount in paise)
+      const amountPaise = Math.round(totalAmount * 100);
       const order = await this.razorpay.orders.create({
         amount:   amountPaise,
         currency: 'INR',
@@ -123,7 +129,7 @@ export class CustomerService {
       const payment = this.paymentRepo.create({
         saleId:          savedSale.id,
         razorpayOrderId: order.id,
-        amount:          subtotal,
+        amount:          totalAmount,
         status:          'PENDING',
         customerName:    dto.name,
         customerMobile:  dto.mobile,
@@ -131,8 +137,11 @@ export class CustomerService {
       await this.paymentRepo.save(payment);
 
       return new CommonResponse(true, 201, 'Order placed successfully', {
-        saleId:      savedSale.id,
-        totalAmount: subtotal,
+        saleId:          savedSale.id,
+        subtotal,
+        discountAmount,
+        discountPercent,
+        totalAmount,
         totalUnits,
         items:       snapshots,
         razorpay: {

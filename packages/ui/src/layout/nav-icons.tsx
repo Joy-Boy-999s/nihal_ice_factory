@@ -387,6 +387,14 @@ export const ShoppingCartIcon: React.FC<IconProps> = (p) => (
   </svg>
 );
 
+export const PercentIcon: React.FC<IconProps> = (p) => (
+  <svg {...base} {...p}>
+    <line x1="19" y1="5" x2="5" y2="19" />
+    <circle cx="6.5" cy="6.5" r="2.5" />
+    <circle cx="17.5" cy="17.5" r="2.5" />
+  </svg>
+);
+
 export const ClipboardListIcon: React.FC<IconProps> = (p) => (
   <svg {...base} {...p}>
     <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />

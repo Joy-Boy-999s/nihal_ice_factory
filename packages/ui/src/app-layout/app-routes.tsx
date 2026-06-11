@@ -15,8 +15,9 @@ const UserManagement   = lazy(() => import('../pages/userManagement/UserManageme
 const PaymentPage      = lazy(() => import('../pages/payment/PaymentPage'));
 const ShopPage         = lazy(() => import('../pages/shop/ShopPage'));
 const MyOrdersPage     = lazy(() => import('../pages/myOrders/MyOrdersPage'));
-const NotFoundPage     = lazy(() => import('../pages/errors/NotFoundPage'));
-const UnauthorizedPage = lazy(() => import('../pages/errors/UnauthorizedPage'));
+const NotFoundPage           = lazy(() => import('../pages/errors/NotFoundPage'));
+const UnauthorizedPage       = lazy(() => import('../pages/errors/UnauthorizedPage'));
+const CustomerDiscountsPage  = lazy(() => import('../pages/customerDiscounts/CustomerDiscountsPage'));
 
 const LazyPage: React.FC<{ children: React.ReactNode; label: string }> = ({ children, label }) => (
   <Suspense fallback={<PageLoader label={label} />}>{children}</Suspense>
@@ -118,6 +119,10 @@ const AppRoutes: React.FC = () => {
               <Route
                 path="/user-management"
                 element={<LazyPage label="Loading user management..."><UserManagement /></LazyPage>}
+              />
+              <Route
+                path="/customer-discounts/:customerId"
+                element={<LazyPage label="Loading discount tiers..."><CustomerDiscountsPage /></LazyPage>}
               />
             </Route>
           </Route>

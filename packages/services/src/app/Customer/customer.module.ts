@@ -10,6 +10,7 @@ import { SalesRepository } from '../Sales/repository/sales.repository';
 import { PaymentRepository } from '../Payment/repository/payment.repository';
 import { IceTypeModule } from '../IcePrice/ice-price.module';
 import { PlantModule } from '../Plant/plant.module';
+import { CustomerDiscountModule } from '../CustomerDiscount/customer-discount.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { PlantModule } from '../Plant/plant.module';
     PassportModule.register({ defaultStrategy: 'jwt' }),
     IceTypeModule,
     PlantModule,
+    CustomerDiscountModule,
   ],
   controllers: [CustomerController],
   providers: [CustomerService, SalesRepository, PaymentRepository],

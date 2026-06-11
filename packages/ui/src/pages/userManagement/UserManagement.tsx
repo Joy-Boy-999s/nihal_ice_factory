@@ -22,7 +22,7 @@ import {
   useToast,
 } from '../../components';
 import { buildAuthConfig, getUserId, logout } from '../../lib/auth';
-import { EditIcon, PlusIcon, SearchIcon, ShieldIcon, TrashIcon, UserIcon } from '../../layout/nav-icons';
+import { EditIcon, PercentIcon, PlusIcon, SearchIcon, ShieldIcon, TrashIcon, UserIcon } from '../../layout/nav-icons';
 import './UserManagement.css';
 
 interface CatchError {
@@ -425,9 +425,10 @@ const UserManagement: React.FC = () => {
     {
       key: 'actions',
       title: 'Actions',
-      width: '260px',
+      width: '300px',
       render: (row) => {
         const isSelf = row.id === currentUserId;
+        const isCustomer = row.role.toUpperCase() === 'CUSTOMER';
         return (
           <div className="um-actions">
             <Button
@@ -440,14 +441,26 @@ const UserManagement: React.FC = () => {
               <ShieldIcon width={13} height={13} />
               Role
             </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => openAssign(row)}
-            >
-              <EditIcon width={13} height={13} />
-              Plants
-            </Button>
+            {isCustomer ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => navigate(`/customer-discounts/${row.id}`)}
+                title="Manage discount tiers"
+              >
+                <PercentIcon width={13} height={13} />
+                Discounts
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => openAssign(row)}
+              >
+                <EditIcon width={13} height={13} />
+                Plants
+              </Button>
+            )}
             <Button
               size="sm"
               variant="danger"
