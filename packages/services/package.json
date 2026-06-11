@@ -44,5 +44,8 @@
   },
   "devDependencies": {
     "fast-uri": "^3.1.0"
+  },
+  "dependencies": {
+    "razorpay": "^2.9.6"
   }
 }
