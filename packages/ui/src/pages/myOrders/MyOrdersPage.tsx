@@ -115,6 +115,21 @@ const MyOrdersPage: React.FC = () => {
     return () => { cancelled = true; };
   }, [svc, handleAuthError, toast]);
 
+  /* Silent refetch when a notification arrives (order fulfilled / cancelled) */
+  useEffect(() => {
+    const onNotify = async () => {
+      try {
+        const res = await svc.getMyOrders(buildAuthConfig());
+        if (!res?.status) return;
+        const env  = res.data as ResponsePayloadRecord | null;
+        const data = (env?.['data'] ?? env) as CustomerOrder[] | null;
+        if (Array.isArray(data)) setOrders(data);
+      } catch { /* background refresh — ignore failures */ }
+    };
+    window.addEventListener('nif:notification', onNotify);
+    return () => window.removeEventListener('nif:notification', onNotify);
+  }, [svc]);
+
   /* ── Derived stats + filtered list ── */
   const stats = useMemo(() => {
     const paid   = orders.filter((o) => o.paymentStatus === 'PAID');

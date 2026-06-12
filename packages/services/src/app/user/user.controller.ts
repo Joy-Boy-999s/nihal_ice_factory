@@ -12,6 +12,7 @@ import {
   UserRole,
 } from '@nihal-ice-factory/shared-models';
 import { UserService } from './user.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from '../jwt-auth.guard';
 import { RolesGuard } from '../guards/roles.guard';
 import { Roles } from '../decorators/roles.decorator';
@@ -123,6 +124,23 @@ export class UserController {
       return await this.userService.updateUser(reqModel);
     } catch (error) {
       return new CommonResponse(false, 1, 'Error updating user');
+    }
+  }
+
+  @Post('changePassword')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @ApiBearerAuth()
+  @ApiBody({ type: ChangePasswordDto })
+  @ApiOperation({ summary: 'Change own password (requires current password)' })
+  async changePassword(
+    @Body() dto: ChangePasswordDto,
+    @GetUser() user: JwtUser,
+  ): Promise<CommonResponse> {
+    try {
+      return await this.userService.changePassword(user.userId, dto.currentPassword, dto.newPassword);
+    } catch (error) {
+      return new CommonResponse(false, 1, 'Error changing password');
     }
   }
 

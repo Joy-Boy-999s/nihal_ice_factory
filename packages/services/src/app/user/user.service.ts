@@ -108,6 +108,24 @@ export class UserService {
     }
   }
 
+  /** Self-service password change — verifies the current password first. */
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<CommonResponse> {
+    try {
+      const user = await this.userRepository.findOne({ where: { id: userId } });
+      if (!user) return new CommonResponse(false, 404, 'User not found');
+
+      const valid = await bcrypt.compare(currentPassword, user.password);
+      if (!valid) return new CommonResponse(false, 401, 'Current password is incorrect');
+
+      const hashed = await bcrypt.hash(newPassword, 10);
+      await this.userRepository.update(userId, { password: hashed });
+      return new CommonResponse(true, 200, 'Password changed successfully');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error changing password';
+      return new CommonResponse(false, 500, message);
+    }
+  }
+
   async updateUser(reqModel: UpdateUserModel): Promise<CommonResponse> {
     await this.transactionManager.startTransaction();
     try {

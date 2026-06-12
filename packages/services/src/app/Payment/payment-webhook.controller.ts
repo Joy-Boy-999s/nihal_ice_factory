@@ -1,5 +1,6 @@
 import { Controller, Headers, HttpCode, HttpStatus, Post, Req } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { PaymentService } from './payment.service';
 
@@ -13,6 +14,7 @@ interface RawBodyRequest extends Request {
  * deliberately NOT behind the JWT guard.
  */
 @ApiExcludeController()
+@SkipThrottle()
 @Controller('payment')
 export class PaymentWebhookController {
   constructor(private readonly paymentService: PaymentService) {}

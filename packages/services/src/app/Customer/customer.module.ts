@@ -6,6 +6,7 @@ import { CustomerController } from './customer.controller';
 import { CustomerService } from './customer.service';
 import { Sale } from '../Sales/entities/sale.entity';
 import { Payment } from '../Payment/entities/payment.entity';
+import { UserEntity } from '../user/entities/user.entity';
 import { SalesRepository } from '../Sales/repository/sales.repository';
 import { PaymentRepository } from '../Payment/repository/payment.repository';
 import { IceTypeModule } from '../IcePrice/ice-price.module';
@@ -17,7 +18,7 @@ import { NotificationModule } from '../Notification/notification.module';
 @Module({
   imports: [
     ConfigModule,
-    TypeOrmModule.forFeature([Sale, Payment]),
+    TypeOrmModule.forFeature([Sale, Payment, UserEntity]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     IceTypeModule,
     PlantModule,
@@ -27,5 +28,6 @@ import { NotificationModule } from '../Notification/notification.module';
   ],
   controllers: [CustomerController],
   providers: [CustomerService, SalesRepository, PaymentRepository],
+  exports: [CustomerService],
 })
 export class CustomerModule {}

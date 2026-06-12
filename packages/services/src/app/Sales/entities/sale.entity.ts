@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn } from 'typeorm';
+import { Entity, Column, Index, PrimaryGeneratedColumn } from 'typeorm';
 
 export type OrderType         = 'NORMAL' | 'ADVANCE';
 export type PayMode           = 'ONLINE' | 'COD';
@@ -20,6 +20,7 @@ export class Sale {
   @PrimaryGeneratedColumn()
   id: number;
 
+  @Index()
   @Column()
   date: string;
 
@@ -27,6 +28,7 @@ export class Sale {
   time: string;
 
   /** Factory plant selected for this sale (e.g. "Unit 1"). */
+  @Index()
   @Column()
   unit: string;
 
@@ -60,6 +62,7 @@ export class Sale {
   soldBy: string;
 
   /** Set when the sale is placed by a CUSTOMER account. Links the sale to a user. */
+  @Index()
   @Column({ nullable: true })
   customerId?: string;
 

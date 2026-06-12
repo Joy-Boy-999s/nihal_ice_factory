@@ -74,6 +74,8 @@ export const NotificationBell: React.FC = () => {
           setItems((prev) => [n, ...prev.filter((p) => p.id !== n.id)].slice(0, MAX_VISIBLE));
           setUnread((u) => u + 1);
           toast.info(n.title);
+          // Let open pages (Orders / My Orders) refetch without a manual refresh
+          window.dispatchEvent(new CustomEvent('nif:notification', { detail: n }));
         } catch { /* malformed event — ignore */ }
       });
 

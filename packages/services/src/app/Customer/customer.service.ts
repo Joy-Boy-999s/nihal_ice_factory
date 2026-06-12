@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
+import { UserEntity } from '../user/entities/user.entity';
 import * as crypto from 'crypto';
 import Razorpay = require('razorpay');
 import { CommonResponse } from '@nihal-ice-factory/shared-models';
@@ -35,6 +38,7 @@ export class CustomerService {
     private readonly discountService: CustomerDiscountService,
     private readonly inventoryService: InventoryService,
     private readonly notificationService: NotificationService,
+    @InjectRepository(UserEntity) private readonly userRepo: Repository<UserEntity>,
     private readonly configService: ConfigService,
   ) {
     this.keyId = configService.get<string>('RAZORPAY_KEY_ID') ?? '';
@@ -176,6 +180,16 @@ export class CustomerService {
         fulfillmentStatus: 'PENDING',
       });
       const savedSale = await this.salesRepo.save(sale);
+
+      // Link this mobile to the account (once) — lets WhatsApp recognise them.
+      // Authenticated order = verified ownership of the number for our purposes.
+      this.userRepo
+        .createQueryBuilder()
+        .update(UserEntity)
+        .set({ mobile: dto.mobile.trim() })
+        .where('id = :id AND mobile IS NULL', { id: customerId })
+        .execute()
+        .catch(() => undefined);
 
       // ── Normal orders: FIFO-hold the stock for this order ──
       if (orderType === 'NORMAL') {

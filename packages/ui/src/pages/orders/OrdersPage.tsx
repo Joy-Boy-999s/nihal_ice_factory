@@ -96,6 +96,13 @@ const OrdersPage: React.FC = () => {
 
   useEffect(() => { load(); }, [load]);
 
+  /* Refetch silently when a notification arrives (new order, payment, cancel) */
+  useEffect(() => {
+    const onNotify = () => load(true);
+    window.addEventListener('nif:notification', onNotify);
+    return () => window.removeEventListener('nif:notification', onNotify);
+  }, [load]);
+
   /* ── Stats + filters ── */
   const today = new Date().toISOString().slice(0, 10);
 
