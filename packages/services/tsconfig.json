@@ -17,6 +17,12 @@
   "exclude": ["src/**/*.spec.ts", "src/**/*.test.ts"],
   "references": [
     {
+      "path": "../../libs/backend-utils"
+    },
+    {
+      "path": "../../libs/shared-models"
+    },
+    {
       "path": "./tsconfig.app.json"
     }
   ]

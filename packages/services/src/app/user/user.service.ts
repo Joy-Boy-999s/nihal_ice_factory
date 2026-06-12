@@ -139,16 +139,21 @@ export class UserService {
       // Whitelist: only profile fields. Role changes go through the
       // admin-guarded PATCH /:userId/role and password changes through the
       // reset-password flow — never mass-assign the request body.
-      const allowed: Partial<{ username: string; email: string }> = {};
+      const allowed: Partial<{ username: string; email: string; mobile: string }> = {};
       if (typeof reqModel.username === 'string' && reqModel.username.trim()) {
         allowed.username = reqModel.username.trim();
       }
       if (typeof reqModel.email === 'string' && reqModel.email.trim()) {
         allowed.email = reqModel.email.trim();
       }
+      // Mobile link (used by WhatsApp ordering/alerts) — 10-digit Indian numbers
+      const mobile = (reqModel as { mobile?: unknown }).mobile;
+      if (typeof mobile === 'string' && /^[6-9]\d{9}$/.test(mobile.trim())) {
+        allowed.mobile = mobile.trim();
+      }
       if (Object.keys(allowed).length === 0) {
         await this.transactionManager.rollbackTransaction();
-        return new CommonResponse(false, 400, 'No updatable fields provided (username, email)');
+        return new CommonResponse(false, 400, 'No updatable fields provided (username, email, mobile)');
       }
 
       await userRepo.update(reqModel.userId, allowed);

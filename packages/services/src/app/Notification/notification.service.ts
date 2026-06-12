@@ -28,6 +28,11 @@ export class NotificationService {
     return this.stream$.asObservable().pipe(filter((n) => n.userId === userId));
   }
 
+  /** Every notification, all recipients — used by channel mirrors (WhatsApp). */
+  streamAll(): Observable<Notification> {
+    return this.stream$.asObservable();
+  }
+
   /**
    * Persists one notification per recipient and pushes them to the live
    * stream. Swallows errors — notifying must never break a business flow.

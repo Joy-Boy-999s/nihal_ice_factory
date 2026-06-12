@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, Not, Repository } from 'typeorm';
+import { In, IsNull, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import {
   CommonResponse,
   DashboardChartSeriesDto,
@@ -486,6 +486,88 @@ export class SalesService {
       }));
 
       return new CommonResponse(true, 200, 'Customer orders fetched successfully', orders);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error occurred';
+      return new CommonResponse(false, 500, message, null);
+    }
+  }
+
+  /**
+   * Production plan: upcoming ADVANCE bookings grouped by delivery date,
+   * plant and ice type, compared against current available stock — tells
+   * operators what to produce and when the current stock won't cover it.
+   */
+  async getProductionPlan(userId: string, isAdmin: boolean): Promise<CommonResponse> {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+
+      let names: string[] | null = null;
+      if (!isAdmin) {
+        names = await this.getAccessiblePlantNames(userId);
+        if (names.length === 0) return new CommonResponse(true, 200, 'Production plan fetched', []);
+      }
+
+      const bookings = await this.salesRepository.find({
+        where: {
+          orderType: 'ADVANCE',
+          fulfillmentStatus: 'PENDING',
+          deliveryDate: MoreThanOrEqual(today),
+          ...(names ? { unit: In(names) } : {}),
+        },
+        order: { deliveryDate: 'ASC' },
+      });
+
+      // Current sellable stock per plant + ice type
+      const batches = names
+        ? await this.batchRepo.find({ where: { plantUnit: In(names) } })
+        : await this.batchRepo.find();
+      const stockByKey = new Map<string, number>();
+      for (const b of batches) {
+        const key = `${b.plantUnit}::${b.iceTypeId}`;
+        stockByKey.set(key, (stockByKey.get(key) ?? 0) + b.availableCount);
+      }
+
+      interface PlanRow {
+        deliveryDate: string;
+        unit: string;
+        iceTypeId: number;
+        iceTypeName: string;
+        bookedQty: number;
+        orders: number;
+        inStockNow: number;
+        shortfall: number;
+      }
+      const rows = new Map<string, PlanRow>();
+
+      for (const sale of bookings) {
+        const date = String(sale.deliveryDate ?? '').slice(0, 10);
+        for (const item of sale.items) {
+          if (item.quantity <= 0) continue;
+          const key = `${date}::${sale.unit}::${item.iceTypeId}`;
+          let row = rows.get(key);
+          if (!row) {
+            row = {
+              deliveryDate: date,
+              unit: sale.unit,
+              iceTypeId: item.iceTypeId,
+              iceTypeName: item.iceTypeName,
+              bookedQty: 0,
+              orders: 0,
+              inStockNow: stockByKey.get(`${sale.unit}::${item.iceTypeId}`) ?? 0,
+              shortfall: 0,
+            };
+            rows.set(key, row);
+          }
+          row.bookedQty += item.quantity;
+          row.orders += 1;
+        }
+      }
+
+      const result = [...rows.values()]
+        .map((r) => ({ ...r, shortfall: Math.max(0, r.bookedQty - r.inStockNow) }))
+        .sort((a, b) => a.deliveryDate.localeCompare(b.deliveryDate) || a.unit.localeCompare(b.unit));
+
+      return new CommonResponse(true, 200, 'Production plan fetched', result);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error occurred';
       return new CommonResponse(false, 500, message, null);

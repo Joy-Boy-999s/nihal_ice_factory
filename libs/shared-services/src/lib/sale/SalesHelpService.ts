@@ -29,6 +29,11 @@ export class SalesHelpService extends CommonAxiosService {
     return await this.axiosGetCall(this.getURLwithMainEndPoint('credit-summary'), config);
   }
 
+  /** Upcoming advance bookings vs current stock. */
+  async getProductionPlan(config?: AxiosRequestConfig): Promise<CommonResponse> {
+    return await this.axiosGetCall(this.getURLwithMainEndPoint('production-plan'), config);
+  }
+
   async getDashboardMetrics(config?: AxiosRequestConfig): Promise<CommonResponse> {
     return await this.axiosGetCall(this.getURLwithMainEndPoint('getDashboardMetrics'), config);
   }

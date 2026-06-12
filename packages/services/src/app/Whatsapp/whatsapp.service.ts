@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { Subscription } from 'rxjs';
 import * as crypto from 'crypto';
 import axios from 'axios';
 import { UserEntity } from '../user/entities/user.entity';
@@ -9,6 +10,8 @@ import { SalesRepository } from '../Sales/repository/sales.repository';
 import { CustomerService } from '../Customer/customer.service';
 import { IceTypeService } from '../IcePrice/ice-price.service';
 import { PlantService } from '../Plant/plant.service';
+import { NotificationService } from '../Notification/notification.service';
+import { Notification } from '../Notification/entities/notification.entity';
 
 /* ── Meta Cloud API webhook payload (the parts we read) ── */
 interface WaMessage {
@@ -41,7 +44,7 @@ const GRAPH_API = 'https://graph.facebook.com/v21.0';
  * still pay online later from My Orders.
  */
 @Injectable()
-export class WhatsappService {
+export class WhatsappService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(WhatsappService.name);
 
   private readonly verifyToken: string;
@@ -49,6 +52,7 @@ export class WhatsappService {
   private readonly phoneNumberId: string;
   private readonly appSecret: string;
   private readonly webUrl: string;
+  private mirrorSub: Subscription | null = null;
 
   constructor(
     @InjectRepository(UserEntity) private readonly userRepo: Repository<UserEntity>,
@@ -56,6 +60,7 @@ export class WhatsappService {
     private readonly customerService: CustomerService,
     private readonly iceTypeService: IceTypeService,
     private readonly plantService: PlantService,
+    private readonly notificationService: NotificationService,
     configService: ConfigService,
   ) {
     this.verifyToken   = configService.get<string>('WHATSAPP_VERIFY_TOKEN') ?? '';
@@ -67,6 +72,35 @@ export class WhatsappService {
 
   get configured(): boolean {
     return Boolean(this.accessToken && this.phoneNumberId);
+  }
+
+  /**
+   * Mirror every in-app notification to the recipient's WhatsApp when their
+   * account has a linked mobile. Customers get order updates (paid / ready /
+   * cancelled) and operators with linked numbers get new-order alerts —
+   * no one has to keep the web app open.
+   */
+  onModuleInit(): void {
+    if (!this.configured) return;
+    this.mirrorSub = this.notificationService.streamAll().subscribe((n) => {
+      void this.mirrorNotification(n);
+    });
+    this.logger.log('WhatsApp notification mirroring active');
+  }
+
+  onModuleDestroy(): void {
+    this.mirrorSub?.unsubscribe();
+    this.mirrorSub = null;
+  }
+
+  private async mirrorNotification(n: Notification): Promise<void> {
+    try {
+      const user = await this.userRepo.findOne({ where: { id: n.userId } });
+      if (!user?.mobile) return;
+      await this.sendText(`91${user.mobile}`, `*${n.title}*\n${n.body}`);
+    } catch (err) {
+      this.logger.warn(`WhatsApp mirror failed: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   /** GET-webhook handshake from Meta when the webhook URL is registered. */

@@ -16,6 +16,7 @@ const InventoryPage    = lazy(() => import('../pages/inventory/inventory'));
 const OrdersPage       = lazy(() => import('../pages/orders/OrdersPage'));
 const CreditPage       = lazy(() => import('../pages/credit/CreditPage'));
 const AuditPage        = lazy(() => import('../pages/audit/AuditPage'));
+const ProductionPage   = lazy(() => import('../pages/production/ProductionPage'));
 const PaymentPage      = lazy(() => import('../pages/payment/PaymentPage'));
 const ShopPage         = lazy(() => import('../pages/shop/ShopPage'));
 const MyOrdersPage     = lazy(() => import('../pages/myOrders/MyOrdersPage'));
@@ -121,6 +122,10 @@ const AppRoutes: React.FC = () => {
             <Route
               path="/credit"
               element={<LazyPage label="Loading credit summary..."><CreditPage /></LazyPage>}
+            />
+            <Route
+              path="/production"
+              element={<LazyPage label="Loading production plan..."><ProductionPage /></LazyPage>}
             />
 
             {/* Admin-only */}

@@ -8,6 +8,7 @@ import { SalesRepository } from '../Sales/repository/sales.repository';
 import { CustomerModule } from '../Customer/customer.module';
 import { IceTypeModule } from '../IcePrice/ice-price.module';
 import { PlantModule } from '../Plant/plant.module';
+import { NotificationModule } from '../Notification/notification.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { PlantModule } from '../Plant/plant.module';
     CustomerModule,
     IceTypeModule,
     PlantModule,
+    NotificationModule,
   ],
   controllers: [WhatsappController],
   providers: [WhatsappService, SalesRepository],

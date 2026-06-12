@@ -71,6 +71,16 @@ export class SalesController {
     return this.salesService.getCreditSummary(user.userId, user.role === 'ADMIN');
   }
 
+  // ── GET /sales/production-plan ────────────────────────────────────────────
+  // Upcoming advance bookings vs current stock for accessible plants.
+
+  @Get('production-plan')
+  @ApiOperation({ summary: 'Advance bookings grouped by date/plant/ice type vs current stock' })
+  @ApiResponse({ status: 200, type: CommonResponse })
+  async getProductionPlan(@GetUser() user: JwtUser): Promise<CommonResponse> {
+    return this.salesService.getProductionPlan(user.userId, user.role === 'ADMIN');
+  }
+
   // ── GET /sales/customer-orders ────────────────────────────────────────────
   // Customer orders for the operator's accessible plants (admins see all).
 
