@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SalesHelpService } from '@nihal-ice-factory/shared-services';
+import { PaymentHelpService, SalesHelpService } from '@nihal-ice-factory/shared-services';
 import type { ResponsePayloadRecord } from '@nihal-ice-factory/shared-models';
 import { Button, Card, PageHeader, PageLoader, useToast } from '../../components';
 import { buildAuthConfig, logout } from '../../lib/auth';
@@ -62,11 +62,13 @@ const OrdersPage: React.FC = () => {
   const navigate = useNavigate();
   const toast    = useToast();
   const svc      = useMemo(() => new SalesHelpService(), []);
+  const paySvc   = useMemo(() => new PaymentHelpService(), []);
 
   const [orders, setOrders]     = useState<CustomerOrder[]>([]);
   const [loading, setLoading]   = useState(true);
   const [filter, setFilter]     = useState<OrderFilter>('ALL');
   const [fulfilling, setFulfilling] = useState<CustomerOrder | null>(null);
+  const [markingPaidId, setMarkingPaidId] = useState<number | null>(null);
 
   const handleAuthError = useCallback((err: unknown): boolean => {
     const e = err as { response?: { status?: number } };
@@ -95,6 +97,23 @@ const OrdersPage: React.FC = () => {
   }, [svc, handleAuthError, toast]);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleMarkPaid = async (order: CustomerOrder) => {
+    if (!window.confirm(`Record ₹${order.totalAmount} cash received for order #${order.id}?`)) return;
+    setMarkingPaidId(order.id);
+    try {
+      const res = await paySvc.recordCashPayment(order.id, buildAuthConfig());
+      if (!res?.status) throw new Error(res?.internalMessage || 'Could not record payment');
+      toast.success(`₹${order.totalAmount} cash recorded for order #${order.id}`);
+      load(true);
+    } catch (err) {
+      if (!handleAuthError(err)) {
+        toast.error(err instanceof Error ? err.message : 'Could not record payment');
+      }
+    } finally {
+      setMarkingPaidId(null);
+    }
+  };
 
   /* Refetch silently when a notification arrives (new order, payment, cancel) */
   useEffect(() => {
@@ -241,6 +260,19 @@ const OrdersPage: React.FC = () => {
                     <div className="op-card__actions">
                       {order.fulfillmentStatus === 'FULFILLED' && order.fulfilledBy && (
                         <span className="op-card__fulfilled-by">by {order.fulfilledBy}</span>
+                      )}
+                      {order.fulfillmentStatus !== 'CANCELLED' &&
+                        order.paymentStatus !== 'PAID' &&
+                        order.paymentStatus !== 'REFUNDED' && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handleMarkPaid(order)}
+                          loading={markingPaidId === order.id}
+                          disabled={markingPaidId !== null}
+                        >
+                          Mark Paid (Cash)
+                        </Button>
                       )}
                       {canFulfill && (
                         <Button size="sm" onClick={() => setFulfilling(order)}>

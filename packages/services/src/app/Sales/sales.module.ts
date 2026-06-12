@@ -18,6 +18,8 @@ import { IceBatchRepository } from '../Inventory/repository/ice-batch.repository
 import { IceSlotRepository } from '../Inventory/repository/ice-slot.repository';
 import { Payment } from '../Payment/entities/payment.entity';
 
+import { AuditModule } from '../Audit/audit.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot(),
@@ -34,6 +36,7 @@ import { Payment } from '../Payment/entities/payment.entity';
     CacheModule.register({ isGlobal: true, ttl: 300 }),
     IceTypeModule,
     PlantModule,
+    AuditModule,
   ],
   controllers: [SalesController],
   providers: [SalesService, GenericTransactionManager, SalesRepository, IceBatchRepository, IceSlotRepository],

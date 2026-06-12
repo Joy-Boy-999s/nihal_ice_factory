@@ -10,6 +10,9 @@ import { PaymentRepository } from './repository/payment.repository';
 import { SalesRepository } from '../Sales/repository/sales.repository';
 import { InventoryModule } from '../Inventory/inventory.module';
 import { NotificationModule } from '../Notification/notification.module';
+import { PlantModule } from '../Plant/plant.module';
+
+import { AuditModule } from '../Audit/audit.module';
 
 @Module({
   imports: [
@@ -18,6 +21,8 @@ import { NotificationModule } from '../Notification/notification.module';
     PassportModule.register({ defaultStrategy: 'jwt' }),
     InventoryModule,
     NotificationModule,
+    PlantModule,
+    AuditModule,
   ],
   controllers: [PaymentController, PaymentWebhookController],
   providers: [PaymentService, PaymentRepository, SalesRepository],

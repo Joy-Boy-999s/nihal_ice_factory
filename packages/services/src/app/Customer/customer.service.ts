@@ -235,6 +235,7 @@ export class CustomerService {
             razorpayOrderId: order.id,
             amount:          totalAmount,
             status:          'PENDING',
+            method:          'RAZORPAY',
             customerName:    dto.name,
             customerMobile:  dto.mobile,
           });

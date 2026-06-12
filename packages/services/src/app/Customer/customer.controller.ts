@@ -8,6 +8,7 @@ import { JwtAuthGuard } from '../jwt-auth.guard';
 import { RolesGuard } from '../guards/roles.guard';
 import { Roles } from '../decorators/roles.decorator';
 import { GetUser, JwtUser } from '../decorators/get-user.decorator';
+import { AuditService } from '../Audit/audit.service';
 
 @ApiTags('Customer')
 @ApiBearerAuth()
@@ -15,7 +16,10 @@ import { GetUser, JwtUser } from '../decorators/get-user.decorator';
 @Roles('CUSTOMER', 'ADMIN')
 @Controller('customer')
 export class CustomerController {
-  constructor(private readonly customerService: CustomerService) {}
+  constructor(
+    private readonly customerService: CustomerService,
+    private readonly auditService: AuditService,
+  ) {}
 
   // GET /customer/shop — browse available plants, ice types, and this customer's discount tiers
   @Get('shop')
@@ -55,7 +59,9 @@ export class CustomerController {
     @Param('saleId', ParseIntPipe) saleId: number,
     @GetUser() user: JwtUser,
   ): Promise<CommonResponse> {
-    return this.customerService.cancelOrder(saleId, user);
+    const res = await this.customerService.cancelOrder(saleId, user);
+    if (res.status) this.auditService.log(user, 'ORDER_CANCELLED', 'sale', saleId);
+    return res;
   }
 
   // GET /customer/my-orders — view own order history with payment status

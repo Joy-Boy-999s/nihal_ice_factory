@@ -18,6 +18,7 @@ import { CustomerDiscountModule } from './CustomerDiscount/customer-discount.mod
 import { InventoryModule } from './Inventory/inventory.module';
 import { NotificationModule } from './Notification/notification.module';
 import { WhatsappModule } from './Whatsapp/whatsapp.module';
+import { AuditModule } from './Audit/audit.module';
 import { JwtStrategy } from './jwt.strategy';
 
 @Module({
@@ -47,6 +48,7 @@ import { JwtStrategy } from './jwt.strategy';
     InventoryModule,
     NotificationModule,
     WhatsappModule,
+    AuditModule,
   ],
   controllers: [AppController],
   providers: [

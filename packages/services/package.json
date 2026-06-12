@@ -4,6 +4,15 @@
   "private": true,
   "nx": {
     "targets": {
+      "test": {
+        "executor": "nx:run-commands",
+        "cache": true,
+        "inputs": ["{projectRoot}/src/**/*.ts", "{projectRoot}/vitest.config.ts"],
+        "options": {
+          "cwd": "packages/services",
+          "command": "vitest run"
+        }
+      },
       "build": {
         "executor": "nx:run-commands",
         "options": {

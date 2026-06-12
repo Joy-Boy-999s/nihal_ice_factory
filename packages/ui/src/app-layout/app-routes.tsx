@@ -14,6 +14,8 @@ const PlantMaster      = lazy(() => import('../pages/plantMaster/PlantMaster'));
 const UserManagement   = lazy(() => import('../pages/userManagement/UserManagement'));
 const InventoryPage    = lazy(() => import('../pages/inventory/inventory'));
 const OrdersPage       = lazy(() => import('../pages/orders/OrdersPage'));
+const CreditPage       = lazy(() => import('../pages/credit/CreditPage'));
+const AuditPage        = lazy(() => import('../pages/audit/AuditPage'));
 const PaymentPage      = lazy(() => import('../pages/payment/PaymentPage'));
 const ShopPage         = lazy(() => import('../pages/shop/ShopPage'));
 const MyOrdersPage     = lazy(() => import('../pages/myOrders/MyOrdersPage'));
@@ -116,6 +118,10 @@ const AppRoutes: React.FC = () => {
               path="/orders"
               element={<LazyPage label="Loading orders..."><OrdersPage /></LazyPage>}
             />
+            <Route
+              path="/credit"
+              element={<LazyPage label="Loading credit summary..."><CreditPage /></LazyPage>}
+            />
 
             {/* Admin-only */}
             <Route element={<AdminRoute />}>
@@ -138,6 +144,10 @@ const AppRoutes: React.FC = () => {
               <Route
                 path="/customer-discounts/:customerId"
                 element={<LazyPage label="Loading discount tiers..."><CustomerDiscountsPage /></LazyPage>}
+              />
+              <Route
+                path="/audit"
+                element={<LazyPage label="Loading audit log..."><AuditPage /></LazyPage>}
               />
             </Route>
           </Route>

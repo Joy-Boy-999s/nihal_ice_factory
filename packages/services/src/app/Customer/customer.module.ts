@@ -15,6 +15,8 @@ import { CustomerDiscountModule } from '../CustomerDiscount/customer-discount.mo
 import { InventoryModule } from '../Inventory/inventory.module';
 import { NotificationModule } from '../Notification/notification.module';
 
+import { AuditModule } from '../Audit/audit.module';
+
 @Module({
   imports: [
     ConfigModule,
@@ -25,6 +27,7 @@ import { NotificationModule } from '../Notification/notification.module';
     CustomerDiscountModule,
     InventoryModule,
     NotificationModule,
+    AuditModule,
   ],
   controllers: [CustomerController],
   providers: [CustomerService, SalesRepository, PaymentRepository],

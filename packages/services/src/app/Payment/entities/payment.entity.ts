@@ -32,6 +32,10 @@ export class Payment {
   @Column({ nullable: true })
   razorpayRefundId: string;
 
+  /** How the money was collected: RAZORPAY (online) or CASH (on delivery). */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  method: 'RAZORPAY' | 'CASH' | null;
+
   @Column({ nullable: true })
   customerName: string;
 

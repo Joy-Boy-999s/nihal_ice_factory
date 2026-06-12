@@ -9,6 +9,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { UserRepository } from './repository/user.repository';
 import { GenericTransactionManager } from '../../database/trasanction-manager';
 
+import { AuditModule } from '../Audit/audit.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot(),
@@ -22,6 +24,7 @@ import { GenericTransactionManager } from '../../database/trasanction-manager';
       }),
     }),
     CacheModule.register({ isGlobal: true, ttl: 300 }),
+    AuditModule,
   ],
   controllers: [UserController],
   providers: [UserService, GenericTransactionManager, UserRepository],

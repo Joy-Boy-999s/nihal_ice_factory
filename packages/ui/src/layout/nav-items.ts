@@ -33,6 +33,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: 'Sales',     to: '/',          icon: SalesIcon,      end: true },
       { label: 'Add Sale',  to: '/addsales',  icon: AddSaleIcon },
       { label: 'Orders',    to: '/orders',    icon: ClipboardListIcon },
+      { label: 'Credit',    to: '/credit',    icon: PriceTagIcon },
       { label: 'Inventory', to: '/inventory', icon: SnowflakeIcon },
     ],
   },
@@ -48,6 +49,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: 'Plant Master', to: '/plant-master',     icon: FactoryIcon,  adminOnly: true },
       { label: 'Price Master', to: '/ice-price-master', icon: PriceTagIcon, adminOnly: true },
       { label: 'Users',        to: '/user-management',  icon: UsersIcon,    adminOnly: true },
+      { label: 'Audit Log',    to: '/audit',            icon: ClipboardListIcon, adminOnly: true },
     ],
   },
 

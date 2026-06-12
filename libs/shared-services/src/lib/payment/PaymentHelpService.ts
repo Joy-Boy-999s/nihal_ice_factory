@@ -28,6 +28,11 @@ export class PaymentHelpService extends CommonAxiosService {
     return this.axiosGetCall(this.ep(`status/${saleId}`), config);
   }
 
+  /** Staff records cash collected at handover (COD). */
+  async recordCashPayment(saleId: number, config?: AxiosRequestConfig): Promise<CommonResponse> {
+    return this.axiosPostCall(this.ep(`record-cash/${saleId}`), {}, config);
+  }
+
   async reportPaymentFailed(
     razorpayOrderId: string,
     reason?: string,

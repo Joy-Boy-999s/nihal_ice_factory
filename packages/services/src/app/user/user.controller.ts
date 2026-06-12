@@ -13,6 +13,7 @@ import {
 } from '@nihal-ice-factory/shared-models';
 import { UserService } from './user.service';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { AuditService } from '../Audit/audit.service';
 import { JwtAuthGuard } from '../jwt-auth.guard';
 import { RolesGuard } from '../guards/roles.guard';
 import { Roles } from '../decorators/roles.decorator';
@@ -21,7 +22,10 @@ import { GetUser, JwtUser } from '../decorators/get-user.decorator';
 @ApiTags('Users')
 @Controller('users')
 export class UserController {
-  constructor(private readonly userService: UserService) {}
+  constructor(
+    private readonly userService: UserService,
+    private readonly auditService: AuditService,
+  ) {}
 
   // ── Public endpoints (no auth required) ──────────────────────────────────
 
@@ -35,9 +39,16 @@ export class UserController {
   @ApiBearerAuth()
   @ApiBody({ type: CreateUserModel })
   @ApiOperation({ summary: 'Create a user with a chosen role (admin only)' })
-  async createUser(@Body() reqModel: CreateUserModel): Promise<CommonResponse> {
+  async createUser(
+    @Body() reqModel: CreateUserModel,
+    @GetUser() caller: JwtUser,
+  ): Promise<CommonResponse> {
     try {
-      return await this.userService.createUser(reqModel);
+      const res = await this.userService.createUser(reqModel);
+      if (res.status) {
+        this.auditService.log(caller, 'USER_CREATED', 'user', reqModel.email, `role=${reqModel.role}`);
+      }
+      return res;
     } catch (error) {
       return new CommonResponse(false, 1, 'User Creation Failed');
     }
@@ -165,9 +176,14 @@ export class UserController {
   @ApiBearerAuth()
   @ApiBody({ type: UserIdRequestModel })
   @ApiOperation({ summary: 'Delete a user account (admin only)' })
-  async deleteUser(@Body() reqModel: UserIdRequestModel): Promise<CommonResponse> {
+  async deleteUser(
+    @Body() reqModel: UserIdRequestModel,
+    @GetUser() caller: JwtUser,
+  ): Promise<CommonResponse> {
     try {
-      return await this.userService.deleteUser(reqModel);
+      const res = await this.userService.deleteUser(reqModel);
+      if (res.status) this.auditService.log(caller, 'USER_DELETED', 'user', reqModel.userId);
+      return res;
     } catch (error) {
       return new CommonResponse(false, 1, 'Error deleting user');
     }
@@ -188,6 +204,8 @@ export class UserController {
     @Body('role') role: string,
     @GetUser() caller: JwtUser,
   ): Promise<CommonResponse> {
-    return this.userService.updateUserRole(userId, role, caller.userId);
+    const res = await this.userService.updateUserRole(userId, role, caller.userId);
+    if (res.status) this.auditService.log(caller, 'ROLE_CHANGED', 'user', userId, `role=${role}`);
+    return res;
   }
 }

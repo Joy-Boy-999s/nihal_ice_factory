@@ -24,6 +24,11 @@ export class SalesHelpService extends CommonAxiosService {
     return await this.axiosGetCall(this.getURLwithMainEndPoint('customer-orders'), config);
   }
 
+  /** Per-customer billed/paid/outstanding summary (khata). */
+  async getCreditSummary(config?: AxiosRequestConfig): Promise<CommonResponse> {
+    return await this.axiosGetCall(this.getURLwithMainEndPoint('credit-summary'), config);
+  }
+
   async getDashboardMetrics(config?: AxiosRequestConfig): Promise<CommonResponse> {
     return await this.axiosGetCall(this.getURLwithMainEndPoint('getDashboardMetrics'), config);
   }

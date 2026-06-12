@@ -330,21 +330,108 @@ export class SalesService {
    * USER   → only sales whose unit (plant name) the user is assigned to.
    *          Resolved via a single IN query — data never leaves the DB for inaccessible rows.
    */
-  async getAllSales(userId: string, isAdmin: boolean): Promise<CommonResponse> {
+  async getAllSales(userId: string, isAdmin: boolean, limit = 1000): Promise<CommonResponse> {
     try {
+      // Cap result size so this endpoint can't degrade into a full-table dump
+      const take = Math.min(Math.max(limit, 1), 5000);
       let sales: Sale[];
 
       if (isAdmin) {
-        sales = await this.salesRepository.find();
+        sales = await this.salesRepository.find({ order: { id: 'DESC' }, take });
       } else {
         const names = await this.getAccessiblePlantNames(userId);
         if (names.length === 0) {
           return new CommonResponse(true, 200, 'Sales fetched successfully', []);
         }
-        sales = await this.salesRepository.find({ where: { unit: In(names) } });
+        sales = await this.salesRepository.find({
+          where: { unit: In(names) },
+          order: { id: 'DESC' },
+          take,
+        });
       }
 
       return new CommonResponse(true, 200, 'Sales fetched successfully', sales);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error occurred';
+      return new CommonResponse(false, 500, message, null);
+    }
+  }
+
+  /**
+   * Credit (khata) summary: per-customer billed / paid / outstanding across
+   * their orders, scoped to the staff user's accessible plants. Cancelled
+   * orders are excluded.
+   */
+  async getCreditSummary(userId: string, isAdmin: boolean): Promise<CommonResponse> {
+    try {
+      let sales: Sale[];
+      if (isAdmin) {
+        sales = await this.salesRepository.find({
+          where: { customerId: Not(IsNull()) },
+          order: { id: 'DESC' },
+        });
+      } else {
+        const names = await this.getAccessiblePlantNames(userId);
+        if (names.length === 0) return new CommonResponse(true, 200, 'Credit summary fetched', []);
+        sales = await this.salesRepository.find({
+          where: { customerId: Not(IsNull()), unit: In(names) },
+          order: { id: 'DESC' },
+        });
+      }
+
+      const active = sales.filter((s) => s.fulfillmentStatus !== 'CANCELLED');
+      if (active.length === 0) return new CommonResponse(true, 200, 'Credit summary fetched', []);
+
+      const payments = await this.paymentRepo.find({
+        where: { saleId: In(active.map((s) => s.id)) },
+        order: { createdAt: 'DESC' },
+      });
+      const latestPayment = new Map<number, Payment>();
+      for (const p of payments) {
+        if (!latestPayment.has(p.saleId)) latestPayment.set(p.saleId, p);
+      }
+
+      interface CreditRow {
+        customerId: string;
+        name: string;
+        mobile: string;
+        orders: number;
+        unpaidOrders: number;
+        billed: number;
+        paid: number;
+        outstanding: number;
+        oldestUnpaidDate: string | null;
+      }
+      const byCustomer = new Map<string, CreditRow>();
+
+      for (const sale of active) {
+        const id = sale.customerId as string;
+        let row = byCustomer.get(id);
+        if (!row) {
+          // sales are DESC — first sighting carries the latest contact details
+          row = {
+            customerId: id, name: sale.name, mobile: sale.mobile,
+            orders: 0, unpaidOrders: 0, billed: 0, paid: 0, outstanding: 0, oldestUnpaidDate: null,
+          };
+          byCustomer.set(id, row);
+        }
+        const amount = Number(sale.totalAmount);
+        const isPaid = latestPayment.get(sale.id)?.status === 'PAID';
+        row.orders += 1;
+        row.billed = Math.round((row.billed + amount) * 100) / 100;
+        if (isPaid) {
+          row.paid = Math.round((row.paid + amount) * 100) / 100;
+        } else {
+          row.unpaidOrders += 1;
+          row.outstanding = Math.round((row.outstanding + amount) * 100) / 100;
+          if (!row.oldestUnpaidDate || sale.date < row.oldestUnpaidDate) {
+            row.oldestUnpaidDate = sale.date;
+          }
+        }
+      }
+
+      const result = [...byCustomer.values()].sort((a, b) => b.outstanding - a.outstanding);
+      return new CommonResponse(true, 200, 'Credit summary fetched', result);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error occurred';
       return new CommonResponse(false, 500, message, null);
@@ -363,6 +450,7 @@ export class SalesService {
         sales = await this.salesRepository.find({
           where: { customerId: Not(IsNull()) },
           order: { id: 'DESC' },
+          take: 1000,
         });
       } else {
         const names = await this.getAccessiblePlantNames(userId);
@@ -372,6 +460,7 @@ export class SalesService {
         sales = await this.salesRepository.find({
           where: { customerId: Not(IsNull()), unit: In(names) },
           order: { id: 'DESC' },
+          take: 1000,
         });
       }
 

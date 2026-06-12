@@ -10,6 +10,7 @@ import { PaymentRepository } from './repository/payment.repository';
 import { SalesRepository } from '../Sales/repository/sales.repository';
 import { InventoryService } from '../Inventory/inventory.service';
 import { NotificationService } from '../Notification/notification.service';
+import { PlantService } from '../Plant/plant.service';
 
 /** End of the current local day — paid order holds last until then. */
 function endOfToday(): Date {
@@ -29,6 +30,7 @@ export class PaymentService {
     private readonly salesRepo: SalesRepository,
     private readonly inventoryService: InventoryService,
     private readonly notificationService: NotificationService,
+    private readonly plantService: PlantService,
     private readonly configService: ConfigService,
   ) {
     this.keyId = configService.get<string>('RAZORPAY_KEY_ID') ?? '';
@@ -79,6 +81,7 @@ export class PaymentService {
         razorpayOrderId: order.id,
         amount: sale.totalAmount,
         status: 'PENDING',
+        method: 'RAZORPAY',
         customerName: sale.name,
         customerMobile: sale.mobile,
       });
@@ -157,6 +160,73 @@ export class PaymentService {
       return new CommonResponse(true, 200, 'Payment status fetched successfully', payment);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch payment status';
+      return new CommonResponse(false, 500, message, null);
+    }
+  }
+
+  /**
+   * Records a cash payment collected at handover (COD orders). Staff only —
+   * non-admins must be assigned to the sale's plant.
+   */
+  async recordCashPayment(
+    saleId: number,
+    user: { userId: string; username: string; role: string },
+  ): Promise<CommonResponse> {
+    try {
+      const sale = await this.salesRepo.findOne({ where: { id: saleId } });
+      if (!sale) return new CommonResponse(false, 404, `Sale ${saleId} not found`, null);
+      if (sale.fulfillmentStatus === 'CANCELLED') {
+        return new CommonResponse(false, 409, 'Cannot record payment for a cancelled order', null);
+      }
+
+      if (user.role !== 'ADMIN') {
+        const plants = await this.plantService.getAccessible(user.userId, false);
+        if (!plants.some((p) => p.plantName === sale.unit)) {
+          return new CommonResponse(false, 403, `Access denied: not assigned to plant "${sale.unit}"`, null);
+        }
+      }
+
+      const existing = await this.paymentRepo.findOne({
+        where: { saleId },
+        order: { createdAt: 'DESC' },
+      });
+      if (existing && (existing.status === 'PAID' || existing.status === 'REFUNDED')) {
+        return new CommonResponse(false, 409, `This sale is already ${existing.status.toLowerCase()}`, existing);
+      }
+
+      let payment = existing;
+      if (payment && payment.status === 'PENDING') {
+        // Online attempt superseded by cash at handover
+        payment.status = 'PAID';
+        payment.method = 'CASH';
+        payment.failureReason = null as unknown as string;
+      } else {
+        payment = this.paymentRepo.create({
+          saleId,
+          razorpayOrderId: `cash_${saleId}_${Date.now()}`,
+          amount: sale.totalAmount,
+          status: 'PAID',
+          method: 'CASH',
+          customerName: sale.name,
+          customerMobile: sale.mobile,
+        });
+      }
+      await this.paymentRepo.save(payment);
+
+      if (sale.customerId) {
+        await this.notificationService.notifyUsers(
+          [sale.customerId],
+          'ORDER_PAID',
+          `Payment received for order #${sale.id}`,
+          `₹${sale.totalAmount} received in cash by ${user.username}. Thank you!`,
+          { saleId: sale.id, plantUnit: sale.unit },
+        );
+      }
+
+      this.logger.log(`Cash payment recorded for sale ${saleId} by ${user.username} (₹${sale.totalAmount})`);
+      return new CommonResponse(true, 200, 'Cash payment recorded', payment);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to record cash payment';
       return new CommonResponse(false, 500, message, null);
     }
   }

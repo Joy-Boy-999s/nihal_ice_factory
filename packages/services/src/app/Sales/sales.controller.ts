@@ -22,6 +22,7 @@ import { CommonResponse, DeleteSalesDto } from '@nihal-ice-factory/shared-models
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { SaleUpdateDto } from './dto/update-sale.dto';
 import { SaleIdRequestDto } from './dto/sale-id-request.dto';
+import { AuditService } from '../Audit/audit.service';
 import { JwtAuthGuard } from '../jwt-auth.guard';
 import { RolesGuard } from '../guards/roles.guard';
 import { GetUser, JwtUser } from '../decorators/get-user.decorator';
@@ -32,7 +33,10 @@ import { Roles } from '../decorators/roles.decorator';
 @UseGuards(JwtAuthGuard)       // Every sales endpoint requires a valid JWT
 @Controller('sales')
 export class SalesController {
-  constructor(private readonly salesService: SalesService) {}
+  constructor(
+    private readonly salesService: SalesService,
+    private readonly auditService: AuditService,
+  ) {}
 
   // ── POST /sales/createSale ────────────────────────────────────────────────
   // Non-admin: only for plants they are assigned to (enforced in service).
@@ -55,6 +59,16 @@ export class SalesController {
   @ApiResponse({ status: 200, description: 'Sales fetched successfully', type: CommonResponse })
   async getAllSales(@GetUser() user: JwtUser): Promise<CommonResponse> {
     return this.salesService.getAllSales(user.userId, user.role === 'ADMIN');
+  }
+
+  // ── GET /sales/credit-summary ─────────────────────────────────────────────
+  // Per-customer outstanding balances (khata) for accessible plants.
+
+  @Get('credit-summary')
+  @ApiOperation({ summary: 'Per-customer billed/paid/outstanding summary (khata)' })
+  @ApiResponse({ status: 200, type: CommonResponse })
+  async getCreditSummary(@GetUser() user: JwtUser): Promise<CommonResponse> {
+    return this.salesService.getCreditSummary(user.userId, user.role === 'ADMIN');
   }
 
   // ── GET /sales/customer-orders ────────────────────────────────────────────
@@ -145,8 +159,11 @@ export class SalesController {
   async updateSale(
     @Param('saleId') saleId: number,
     @Body() reqDto: SaleUpdateDto,
+    @GetUser() user: JwtUser,
   ): Promise<CommonResponse> {
-    return this.salesService.update(saleId, reqDto);
+    const res = await this.salesService.update(saleId, reqDto);
+    if (res.status) this.auditService.log(user, 'SALE_UPDATED', 'sale', saleId);
+    return res;
   }
 
   // ── DELETE /sales/deleteSale/:saleId ────────────────────────────────────
@@ -160,8 +177,11 @@ export class SalesController {
   @HttpCode(HttpStatus.OK)
   async deleteSale(
     @Param('saleId', ParseIntPipe) saleId: number,
+    @GetUser() user: JwtUser,
   ): Promise<CommonResponse> {
-    return this.salesService.deleteOne(saleId);
+    const res = await this.salesService.deleteOne(saleId);
+    if (res.status) this.auditService.log(user, 'SALE_DELETED', 'sale', saleId);
+    return res;
   }
 
   // ── DELETE /sales/deleteSales ────────────────────────────────────────────
@@ -173,8 +193,13 @@ export class SalesController {
   @ApiOperation({ summary: 'Delete multiple sales (admin only)' })
   @ApiBody({ type: DeleteSalesDto })
   @HttpCode(HttpStatus.OK)
-  async deleteMultiple(@Body() reqDto: DeleteSalesDto): Promise<CommonResponse> {
-    return this.salesService.deleteMany(reqDto.ids);
+  async deleteMultiple(
+    @Body() reqDto: DeleteSalesDto,
+    @GetUser() user: JwtUser,
+  ): Promise<CommonResponse> {
+    const res = await this.salesService.deleteMany(reqDto.ids);
+    if (res.status) this.auditService.log(user, 'SALES_DELETED', 'sale', null, `ids=${reqDto.ids.join(',')}`);
+    return res;
   }
 
   // ── POST /sales/getPrintData ─────────────────────────────────────────────

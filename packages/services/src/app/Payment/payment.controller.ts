@@ -6,14 +6,20 @@ import { VerifyPaymentDto } from './dto/verify-payment.dto';
 import { PaymentFailedDto } from './dto/payment-failed.dto';
 import { CommonResponse } from '@nihal-ice-factory/shared-models';
 import { JwtAuthGuard } from '../jwt-auth.guard';
+import { RolesGuard } from '../guards/roles.guard';
+import { Roles } from '../decorators/roles.decorator';
 import { GetUser, JwtUser } from '../decorators/get-user.decorator';
+import { AuditService } from '../Audit/audit.service';
 
 @ApiTags('Payment')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('payment')
 export class PaymentController {
-  constructor(private readonly paymentService: PaymentService) {}
+  constructor(
+    private readonly paymentService: PaymentService,
+    private readonly auditService: AuditService,
+  ) {}
 
   // POST /payment/create-order
   @Post('create-order')
@@ -40,6 +46,21 @@ export class PaymentController {
   @ApiOperation({ summary: 'Record a failed Razorpay checkout attempt' })
   async paymentFailed(@Body() dto: PaymentFailedDto): Promise<CommonResponse> {
     return this.paymentService.markFailed(dto);
+  }
+
+  // POST /payment/record-cash/:saleId — staff records cash collected at handover
+  @Post('record-cash/:saleId')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'USER')
+  @ApiParam({ name: 'saleId', type: Number })
+  @ApiOperation({ summary: 'Record a cash (pay-on-delivery) payment for a sale' })
+  async recordCash(
+    @Param('saleId', ParseIntPipe) saleId: number,
+    @GetUser() user: JwtUser,
+  ): Promise<CommonResponse> {
+    const res = await this.paymentService.recordCashPayment(saleId, user);
+    if (res.status) this.auditService.log(user, 'CASH_RECORDED', 'payment', saleId);
+    return res;
   }
 
   // GET /payment/status/:saleId
