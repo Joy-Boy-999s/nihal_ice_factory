@@ -60,7 +60,10 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 					password,
 					database,
 					migrations: ['dist/database/migrations/*.{ts,js}'],
-					synchronize: true,
+					// Auto schema sync. Convenient while the schema is evolving, but it
+					// can drop/alter production columns — set DB_SYNCHRONIZE=false once
+					// the schema stabilises and manage changes via migrations instead.
+					synchronize: (cfg.get<string>('DB_SYNCHRONIZE') || 'true').toLowerCase() !== 'false',
 					logging: dbLoggingEnabled
 						? ['query', 'error', 'warn', 'schema', 'migration']
 						: !isProduction,

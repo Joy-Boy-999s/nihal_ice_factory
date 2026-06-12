@@ -184,16 +184,13 @@ export class InventoryController {
     const isAdmin = user.role === 'ADMIN';
     const userId  = user.userId;
 
+    // Expired-reservation release happens in the singleton
+    // InventoryMaintenanceService sweep — not per connected client.
     const availability$ = interval(10_000).pipe(
       startWith(0),
       switchMap(() =>
-        from(
-          Promise.all([
-            this.inventoryService.getAvailabilitySummary(userId, isAdmin),
-            this.inventoryService.releaseExpiredReservations(),
-          ]),
-        ).pipe(
-          map(([response]): MessageEvent => ({ type: 'inventory', retry: 2000, data: response })),
+        from(this.inventoryService.getAvailabilitySummary(userId, isAdmin)).pipe(
+          map((response): MessageEvent => ({ type: 'inventory', retry: 2000, data: response })),
           catchError((err: Error) =>
             of<MessageEvent>({
               type: 'inventory-error',

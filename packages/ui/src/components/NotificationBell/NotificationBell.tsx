@@ -57,6 +57,7 @@ export const NotificationBell: React.FC = () => {
   /* ── SSE live stream with reconnect ── */
   useEffect(() => {
     let stopped = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
     const connect = () => {
       const token = getToken();
@@ -80,13 +81,14 @@ export const NotificationBell: React.FC = () => {
         es.close();
         if (stopped) return;
         const delay = Math.min(30_000, 2_000 * 2 ** retryRef.current++);
-        setTimeout(connect, delay);
+        reconnectTimer = setTimeout(connect, delay);
       };
     };
 
     connect();
     return () => {
       stopped = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
       esRef.current?.close();
     };
   }, [svc, toast]);

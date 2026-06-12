@@ -14,6 +14,11 @@ import { Request, Response } from 'express';
 const IS_PROD = process.env.NODE_ENV === 'production';
 const SLOW_REQUEST_MS = 1500;
 
+/** SSE auth uses ?token=<JWT> — never let live tokens reach the log stream. */
+export function redactUrl(url: string): string {
+  return url.replace(/([?&]token=)[^&]+/gi, '$1[REDACTED]');
+}
+
 interface RequestWithContext extends Request {
   user?: { userId?: number; role?: string };
   requestId?: string;
@@ -60,11 +65,12 @@ export class LoggingInterceptor implements NestInterceptor {
     const durationMs = Date.now() - started;
     const userId = req.user?.userId ?? null;
     const role   = req.user?.role ?? null;
+    const url    = redactUrl(req.originalUrl);
 
     const line = IS_PROD
       ? JSON.stringify({
           method: req.method,
-          url: req.originalUrl,
+          url,
           status,
           durationMs,
           userId,
@@ -72,7 +78,7 @@ export class LoggingInterceptor implements NestInterceptor {
           requestId: req.requestId,
           ip: req.ip,
         })
-      : `${req.method} ${req.originalUrl} → ${status} ${durationMs}ms` +
+      : `${req.method} ${url} → ${status} ${durationMs}ms` +
         (userId ? ` user=${userId}(${role})` : '') +
         ` req=${req.requestId}`;
 

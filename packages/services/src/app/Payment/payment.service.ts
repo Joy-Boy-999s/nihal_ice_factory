@@ -36,10 +36,23 @@ export class PaymentService {
     this.razorpay = new Razorpay({ key_id: this.keyId, key_secret: keySecret });
   }
 
-  async createOrder(dto: CreateOrderDto): Promise<CommonResponse> {
+  /** A CUSTOMER may only act on their own sales; staff/admin on any. */
+  private customerOwnsSale(
+    sale: { customerId?: string | null },
+    user?: { userId: string; role: string },
+  ): boolean {
+    if (!user || user.role !== 'CUSTOMER') return true;
+    return sale.customerId === user.userId;
+  }
+
+  async createOrder(dto: CreateOrderDto, user?: { userId: string; role: string }): Promise<CommonResponse> {
     try {
       const sale = await this.salesRepo.findOne({ where: { id: dto.saleId } });
       if (!sale) throw new NotFoundException(`Sale ${dto.saleId} not found`);
+
+      if (!this.customerOwnsSale(sale, user)) {
+        return new CommonResponse(false, 403, 'You can only pay for your own orders', null);
+      }
 
       const existingPaid = await this.paymentRepo.findOne({
         where: { saleId: dto.saleId, status: 'PAID' },
@@ -119,8 +132,15 @@ export class PaymentService {
     }
   }
 
-  async getPaymentStatus(saleId: number): Promise<CommonResponse> {
+  async getPaymentStatus(saleId: number, user?: { userId: string; role: string }): Promise<CommonResponse> {
     try {
+      if (user?.role === 'CUSTOMER') {
+        const sale = await this.salesRepo.findOne({ where: { id: saleId } });
+        if (!sale || !this.customerOwnsSale(sale, user)) {
+          return new CommonResponse(false, 403, 'You can only view your own orders', null);
+        }
+      }
+
       const payment = await this.paymentRepo.findOne({
         where: { saleId },
         order: { createdAt: 'DESC' },

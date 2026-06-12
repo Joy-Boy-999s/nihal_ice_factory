@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Response, Request } from 'express';
+import { redactUrl } from '../logging/logging.interceptor';
 
 /** Shape of the response body that NestJS HTTP exceptions expose. */
 interface ExceptionResponse {
@@ -138,7 +139,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const logContext = {
       requestId:   request.requestId,
       method:      request.method,
-      url:         request.originalUrl,
+      url:         redactUrl(request.originalUrl),
       statusCode,
       errorType,
       internalMessage,

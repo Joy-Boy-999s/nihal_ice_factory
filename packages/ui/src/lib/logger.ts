@@ -67,6 +67,7 @@ function ship(entry: LogEntry): void {
   const last = lastShipped.get(entry.msg);
   const now  = Date.now();
   if (last && now - last < DEDUPE_MS) return;
+  if (lastShipped.size >= 200) lastShipped.clear(); // keep the dedupe map bounded
   lastShipped.set(entry.msg, now);
 
   shipQueue.push(entry);

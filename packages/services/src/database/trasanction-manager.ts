@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Scope } from '@nestjs/common';
 import { DataSource, EntityTarget, ObjectLiteral, QueryRunner, Repository } from 'typeorm';
 
 export interface ITransactionHelper {
@@ -7,7 +7,14 @@ export interface ITransactionHelper {
   getRepository<T extends ObjectLiteral>(entity: Repository<T>): Repository<T>;
 }
 
-@Injectable()
+/**
+ * REQUEST-scoped on purpose: this class stores the active QueryRunner as
+ * instance state. As a singleton, two concurrent requests would overwrite
+ * each other's runner — commits/rollbacks would land on the wrong
+ * transaction and connections would leak. Request scope gives every request
+ * its own instance (Nest bubbles the scope up to consuming services).
+ */
+@Injectable({ scope: Scope.REQUEST })
 export class GenericTransactionManager implements ITransactionHelper {
   private queryRunner: QueryRunner;
 

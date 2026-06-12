@@ -13,9 +13,23 @@ const logLevels: LogLevel[] =
   (process.env.LOG_LEVEL?.split(',').map((l) => l.trim()) as LogLevel[] | undefined) ??
   (isProd ? ['log', 'warn', 'error'] : ['debug', 'verbose', 'log', 'warn', 'error']);
 
+/** Origins allowed to call this API. Override with ALLOWED_ORIGINS (comma-separated). */
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ??
+  'http://localhost:4200,https://nihal-ice-factory.vercel.app')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { logger: logLevels });
-  app.enableCors({ credentials: true, origin: true });
+  app.enableCors({
+    credentials: true,
+    origin: (origin, callback) => {
+      // Allow same-origin / non-browser callers (no Origin header, e.g. Razorpay webhook)
+      if (!origin || allowedOrigins.includes(origin)) callback(null, true);
+      else callback(new Error(`Origin ${origin} not allowed by CORS`));
+    },
+  });
 
   // Render runs behind a proxy — needed for correct req.ip in logs
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
@@ -53,6 +67,9 @@ process.on('unhandledRejection', (reason) => {
 
 process.on('uncaughtException', (err) => {
   Logger.error(`Uncaught exception: ${err.stack ?? err.message}`, 'Process');
+  // The process is in an undefined state — exit and let Render restart it.
+  // Short delay gives the log line time to flush.
+  setTimeout(() => process.exit(1), 500);
 });
 
 bootstrap();

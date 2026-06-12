@@ -16,6 +16,7 @@ import { PlantService } from '../Plant/plant.service';
 import { SalesRepository } from '../Sales/repository/sales.repository';
 import { GenericTransactionManager } from '../../database/trasanction-manager';
 import { NotificationService } from '../Notification/notification.service';
+import { InventoryMaintenanceService } from './inventory-maintenance.service';
 
 /** Converts a numeric row index to a letter label: 0→A, 1→B, …, 25→Z, 26→AA */
 function rowLabel(row: number): string {
@@ -38,6 +39,7 @@ export class InventoryService {
     private readonly salesRepo: SalesRepository,
     private readonly txManager: GenericTransactionManager,
     private readonly notificationService: NotificationService,
+    private readonly maintenanceService: InventoryMaintenanceService,
   ) {}
 
   // ── Plant access helpers ────────────────────────────────────────────────────
@@ -654,27 +656,9 @@ export class InventoryService {
   // ── Release expired reservations (called by SSE poll / cron) ─────────────
 
   async releaseExpiredReservations(): Promise<number> {
-    const expired = await this.slotRepo
-      .createQueryBuilder('slot')
-      .where('slot.status = :status', { status: 'reserved' })
-      .andWhere('slot.reservedUntil < :now', { now: new Date() })
-      .getMany();
-
-    if (!expired.length) return 0;
-
-    for (const slot of expired) {
-      slot.status        = 'available';
-      slot.reservedFor   = null;
-      slot.reservedUntil = null;
-    }
-    await this.slotRepo.save(expired);
-
-    const batchIds = [...new Set(expired.map((s) => s.batchId))];
-    for (const batchId of batchIds) {
-      const batch = await this.batchRepo.findOne({ where: { id: batchId } });
-      if (batch) await this.recalcBatchCounts(batch, this.slotRepo, this.batchRepo);
-    }
-    return expired.length;
+    // Actual sweep lives in the singleton maintenance service (which also
+    // runs it on a global interval) — this stays for the admin endpoint.
+    return this.maintenanceService.releaseExpiredReservations();
   }
 
   // ── Customer-order integration ────────────────────────────────────────────
@@ -965,8 +949,8 @@ export class InventoryService {
 
   private async recalcBatchCounts(
     batch: IceBatch,
-    slotRepo: any,
-    batchRepo: any,
+    slotRepo: Pick<IceSlotRepository, 'count'>,
+    batchRepo: Pick<IceBatchRepository, 'save'>,
   ): Promise<void> {
     const [available, sold, reserved, damaged] = await Promise.all([
       slotRepo.count({ where: { batchId: batch.id, status: 'available' } }),

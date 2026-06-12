@@ -186,7 +186,9 @@ export class CustomerService {
             reservedUntil,
           );
         } catch (reserveErr) {
-          // Race lost between check and reserve — undo the sale
+          // Race lost between check and reserve — release any slots that were
+          // already held for earlier items, then undo the sale.
+          await this.inventoryService.releaseSlotsForSale(savedSale.id).catch(() => undefined);
           await this.salesRepo.delete({ id: savedSale.id });
           const msg = reserveErr instanceof Error ? reserveErr.message : 'Insufficient stock';
           return new CommonResponse(false, 409, msg, null);

@@ -118,7 +118,22 @@ export class UserService {
         return new CommonResponse(false, 404, 'User not found');
       }
 
-      await userRepo.update(reqModel.userId, reqModel);
+      // Whitelist: only profile fields. Role changes go through the
+      // admin-guarded PATCH /:userId/role and password changes through the
+      // reset-password flow — never mass-assign the request body.
+      const allowed: Partial<{ username: string; email: string }> = {};
+      if (typeof reqModel.username === 'string' && reqModel.username.trim()) {
+        allowed.username = reqModel.username.trim();
+      }
+      if (typeof reqModel.email === 'string' && reqModel.email.trim()) {
+        allowed.email = reqModel.email.trim();
+      }
+      if (Object.keys(allowed).length === 0) {
+        await this.transactionManager.rollbackTransaction();
+        return new CommonResponse(false, 400, 'No updatable fields provided (username, email)');
+      }
+
+      await userRepo.update(reqModel.userId, allowed);
       const updatedUser = await userRepo.findOne({ where: { id: reqModel.userId } });
       await this.transactionManager.commitTransaction();
       return new CommonResponse(true, 200, 'User updated successfully', updatedUser);

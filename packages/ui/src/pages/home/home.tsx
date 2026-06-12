@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import * as XLSX from 'xlsx';
 import {
   CommonResponse,
   IceTypeDto,
@@ -695,7 +694,7 @@ const Home: React.FC = () => {
 
   // ── Export ────────────────────────────────────────────────────────────────
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const rows = (filteredSales.length ? filteredSales : sales).map((s) => {
       const activeItems = (s.items ?? []).filter((i) => i.quantity > 0);
       const convTotals  = getSaleConversionTotals(activeItems, conversions);
@@ -723,11 +722,33 @@ const Home: React.FC = () => {
       if (convStr) row['Equivalent Units'] = convStr;
       return row;
     });
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Sales');
-    XLSX.writeFile(wb, 'sales_data.xlsx');
-    toast.success('Exported to Excel');
+    try {
+      // exceljs replaces xlsx (unpatched CVEs); loaded on demand so the
+      // spreadsheet engine stays out of the main bundle.
+      const { Workbook } = await import('exceljs');
+      const workbook = new Workbook();
+      const sheet = workbook.addWorksheet('Sales');
+
+      // Column union — 'Equivalent Units' only exists on rows with conversions
+      const headers = [...new Set(rows.flatMap((r) => Object.keys(r)))];
+      sheet.columns = headers.map((h) => ({ header: h, key: h, width: Math.max(12, h.length + 2) }));
+      for (const row of rows) sheet.addRow(row);
+      sheet.getRow(1).font = { bold: true };
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'sales_data.xlsx';
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Exported to Excel');
+    } catch {
+      toast.error('Export failed');
+    }
   };
 
   // ── Table columns ─────────────────────────────────────────────────────────

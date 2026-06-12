@@ -23,9 +23,16 @@ export class UserController {
 
   // ── Public endpoints (no auth required) ──────────────────────────────────
 
+  /**
+   * Admin-only: this DTO carries an arbitrary role, so it must never be
+   * public — self-service signup goes through registerCustomer below.
+   */
   @Post('createUser')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
   @ApiBody({ type: CreateUserModel })
-  @ApiOperation({ summary: 'Register a new user (public)' })
+  @ApiOperation({ summary: 'Create a user with a chosen role (admin only)' })
   async createUser(@Body() reqModel: CreateUserModel): Promise<CommonResponse> {
     try {
       return await this.userService.createUser(reqModel);
@@ -98,9 +105,16 @@ export class UserController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiBody({ type: UpdateUserModel })
-  @ApiOperation({ summary: 'Update user profile fields' })
-  async updateUser(@Body('userId') reqModel: UpdateUserModel): Promise<CommonResponse> {
+  @ApiOperation({ summary: 'Update own profile fields (admins may update any user)' })
+  async updateUser(
+    @Body() reqModel: UpdateUserModel,
+    @GetUser() user: JwtUser,
+  ): Promise<CommonResponse> {
     try {
+      // Ownership: non-admins may only update their own account
+      if (user.role !== 'ADMIN' && reqModel.userId !== user.userId) {
+        return new CommonResponse(false, 403, 'You can only update your own profile');
+      }
       return await this.userService.updateUser(reqModel);
     } catch (error) {
       return new CommonResponse(false, 1, 'Error updating user');

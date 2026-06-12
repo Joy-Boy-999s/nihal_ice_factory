@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { InventoryController } from './inventory.controller';
 import { InventoryService } from './inventory.service';
+import { InventoryMaintenanceService } from './inventory-maintenance.service';
 import { IceBatchRepository } from './repository/ice-batch.repository';
 import { IceSlotRepository } from './repository/ice-slot.repository';
 import { IceBatch } from './entities/ice-batch.entity';
@@ -24,6 +25,7 @@ import { GenericTransactionManager } from '../../database/trasanction-manager';
   controllers: [InventoryController],
   providers: [
     InventoryService,
+    InventoryMaintenanceService,
     IceBatchRepository,
     IceSlotRepository,
     GenericTransactionManager,

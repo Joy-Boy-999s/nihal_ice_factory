@@ -6,6 +6,7 @@ import { VerifyPaymentDto } from './dto/verify-payment.dto';
 import { PaymentFailedDto } from './dto/payment-failed.dto';
 import { CommonResponse } from '@nihal-ice-factory/shared-models';
 import { JwtAuthGuard } from '../jwt-auth.guard';
+import { GetUser, JwtUser } from '../decorators/get-user.decorator';
 
 @ApiTags('Payment')
 @ApiBearerAuth()
@@ -18,8 +19,11 @@ export class PaymentController {
   @Post('create-order')
   @ApiBody({ type: CreateOrderDto })
   @ApiOperation({ summary: 'Create a Razorpay payment order for a sale' })
-  async createOrder(@Body() dto: CreateOrderDto): Promise<CommonResponse> {
-    return this.paymentService.createOrder(dto);
+  async createOrder(
+    @Body() dto: CreateOrderDto,
+    @GetUser() user: JwtUser,
+  ): Promise<CommonResponse> {
+    return this.paymentService.createOrder(dto, user);
   }
 
   // POST /payment/verify
@@ -42,7 +46,10 @@ export class PaymentController {
   @Get('status/:saleId')
   @ApiParam({ name: 'saleId', type: Number })
   @ApiOperation({ summary: 'Get payment status for a sale' })
-  async getStatus(@Param('saleId', ParseIntPipe) saleId: number): Promise<CommonResponse> {
-    return this.paymentService.getPaymentStatus(saleId);
+  async getStatus(
+    @Param('saleId', ParseIntPipe) saleId: number,
+    @GetUser() user: JwtUser,
+  ): Promise<CommonResponse> {
+    return this.paymentService.getPaymentStatus(saleId, user);
   }
 }
