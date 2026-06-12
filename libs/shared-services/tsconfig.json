@@ -15,9 +15,6 @@
   "exclude": ["node_modules", "dist"],
   "references": [
     {
-      "path": "../shared-models"
-    },
-    {
       "path": "./tsconfig.lib.json"
     }
   ]

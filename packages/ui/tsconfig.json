@@ -12,7 +12,7 @@
       ],
       "@nihal-ice-factory/shared-models": [
         "../../libs/shared-models/src/index.ts"
-    ]
+      ]
     },
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
@@ -21,12 +21,6 @@
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"],
   "references": [
-    {
-      "path": "../../libs/shared-models"
-    },
-    {
-      "path": "../../libs/shared-services"
-    },
     {
       "path": "./tsconfig.app.json"
     }
