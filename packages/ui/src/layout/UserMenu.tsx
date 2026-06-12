@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { UserHelpService } from '@nihal-ice-factory/shared-services';
 import { ChevronDownIcon, LogoutIcon, UserIcon } from './nav-icons';
 import { Button, Field, Input, Modal, useToast } from '../components';
-import { buildAuthConfig } from '../lib/auth';
+import { buildAuthConfig, getUserId } from '../lib/auth';
+import type { UpdateUserModel } from '@nihal-ice-factory/shared-models';
 
 interface UserMenuProps {
   role: string;
@@ -14,6 +15,37 @@ export const UserMenu: React.FC<UserMenuProps> = ({ role, onLogout }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const toast = useToast();
   const userService = useMemo(() => new UserHelpService(), []);
+
+  /* ── Link WhatsApp number modal ── */
+  const [waOpen, setWaOpen]   = useState(false);
+  const [waMobile, setWaMobile] = useState('');
+  const [waError, setWaError]   = useState('');
+  const [waSaving, setWaSaving] = useState(false);
+
+  const closeWaModal = () => { setWaOpen(false); setWaMobile(''); setWaError(''); };
+
+  const handleLinkMobile = async () => {
+    setWaError('');
+    if (!/^[6-9]\d{9}$/.test(waMobile.trim())) {
+      setWaError('Enter a valid 10-digit mobile number');
+      return;
+    }
+    const userId = getUserId();
+    if (!userId) { setWaError('Could not identify your account — sign in again'); return; }
+
+    setWaSaving(true);
+    try {
+      const payload = { userId, mobile: waMobile.trim() } as unknown as UpdateUserModel;
+      const res = await userService.updateUser(payload, buildAuthConfig());
+      if (!res?.status) throw new Error(res?.internalMessage || 'Could not link number');
+      toast.success('WhatsApp number linked — you\'ll get order alerts there');
+      closeWaModal();
+    } catch (err) {
+      setWaError(err instanceof Error ? err.message : 'Could not link number');
+    } finally {
+      setWaSaving(false);
+    }
+  };
 
   /* ── Change password modal ── */
   const [pwOpen, setPwOpen]     = useState(false);
@@ -112,6 +144,18 @@ export const UserMenu: React.FC<UserMenuProps> = ({ role, onLogout }) => {
           </button>
           <button
             type="button"
+            className="app-shell__user-dropdown-item"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              setWaOpen(true);
+            }}
+          >
+            <UserIcon />
+            <span>Link WhatsApp number</span>
+          </button>
+          <button
+            type="button"
             className="app-shell__user-dropdown-item app-shell__user-dropdown-item--danger"
             role="menuitem"
             onClick={() => {
@@ -124,6 +168,38 @@ export const UserMenu: React.FC<UserMenuProps> = ({ role, onLogout }) => {
           </button>
         </div>
       )}
+
+      <Modal
+        open={waOpen}
+        size="sm"
+        title="Link WhatsApp Number"
+        onClose={closeWaModal}
+        footer={
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', width: '100%' }}>
+            <Button variant="secondary" onClick={closeWaModal} disabled={waSaving}>Cancel</Button>
+            <Button onClick={handleLinkMobile} loading={waSaving}>Link Number</Button>
+          </div>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+            Get order alerts on WhatsApp and place orders by messaging the factory number.
+            Use the WhatsApp number you message from.
+          </p>
+          <Field label="WhatsApp Mobile Number" required hint="10-digit Indian mobile, e.g. 9398907796">
+            <Input
+              value={waMobile}
+              onChange={(e) => setWaMobile(e.target.value)}
+              inputMode="numeric"
+              maxLength={10}
+              placeholder="10-digit mobile"
+            />
+          </Field>
+          {waError && (
+            <p style={{ margin: 0, color: 'var(--color-error, #dc2626)', fontSize: '0.85rem' }}>{waError}</p>
+          )}
+        </div>
+      </Modal>
 
       <Modal
         open={pwOpen}

@@ -1,4 +1,5 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { DataSource } from 'typeorm';
 import { Plant } from './entities/plant.entity';
 import { UserPlantAccess } from './entities/user-plant-access.entity';
 import { PlantRepository } from './repository/plant.repository';
@@ -6,12 +7,19 @@ import { UserPlantAccessRepository } from './repository/user-plant-access.reposi
 import { CreatePlantDto } from './dto/create-plant.dto';
 import { UpdatePlantDto } from './dto/update-plant.dto';
 import { AssignPlantAccessDto } from './dto/assign-plant-access.dto';
+import { Sale } from '../Sales/entities/sale.entity';
+import { IceBatch } from '../Inventory/entities/ice-batch.entity';
+import { IceSlot } from '../Inventory/entities/ice-slot.entity';
+import { IceType } from '../IcePrice/entities/ice-price.entity';
 
 @Injectable()
 export class PlantService {
+  private readonly logger = new Logger(PlantService.name);
+
   constructor(
     private readonly plantRepository: PlantRepository,
     private readonly accessRepository: UserPlantAccessRepository,
+    private readonly dataSource: DataSource,
   ) {}
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
@@ -46,22 +54,47 @@ export class PlantService {
 
   async update(id: number, dto: UpdatePlantDto): Promise<Plant> {
     const plant = await this.getById(id);
+    const oldName = plant.plantName;
+    const renamingTo =
+      dto.plantName !== undefined && dto.plantName !== oldName ? dto.plantName : null;
 
-    if (dto.plantName !== undefined && dto.plantName !== plant.plantName) {
+    if (renamingTo) {
       const conflict = await this.plantRepository.findOne({
-        where: { plantName: dto.plantName },
+        where: { plantName: renamingTo },
       });
       if (conflict) {
-        throw new ConflictException(`A plant named "${dto.plantName}" already exists.`);
+        throw new ConflictException(`A plant named "${renamingTo}" already exists.`);
       }
-      plant.plantName = dto.plantName;
+      plant.plantName = renamingTo;
     }
 
     if (dto.isActive !== undefined) {
       plant.isActive = dto.isActive;
     }
 
-    return this.plantRepository.save(plant);
+    if (!renamingTo) {
+      return this.plantRepository.save(plant);
+    }
+
+    // Plants are referenced BY NAME across sales, batches, slots and prices
+    // (denormalized snapshots). A rename must cascade to all of them in one
+    // transaction, or every historical record and stock lookup silently
+    // detaches from the plant.
+    return this.dataSource.transaction(async (em) => {
+      const saved = await em.save(Plant, plant);
+      const [sales, batches, slots, prices] = await Promise.all([
+        em.update(Sale,     { unit: oldName },      { unit: renamingTo }),
+        em.update(IceBatch, { plantUnit: oldName }, { plantUnit: renamingTo }),
+        em.update(IceSlot,  { plantUnit: oldName }, { plantUnit: renamingTo }),
+        em.update(IceType,  { plantUnit: oldName }, { plantUnit: renamingTo }),
+      ]);
+      this.logger.log(
+        `Plant "${oldName}" renamed to "${renamingTo}" — cascaded to ` +
+          `${sales.affected ?? 0} sales, ${batches.affected ?? 0} batches, ` +
+          `${slots.affected ?? 0} slots, ${prices.affected ?? 0} ice types`,
+      );
+      return saved;
+    });
   }
 
   async delete(id: number): Promise<void> {
