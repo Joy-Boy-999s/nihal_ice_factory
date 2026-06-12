@@ -41,31 +41,78 @@ if (-not (Test-Path "$APP_DIR\package.json")) {
 Write-OK "Project root: $APP_DIR"
 
 # ─────────────────────────────────────────────────────────────
-# STEP 2 — Patch frontend API URL to point at this server
+# STEP 2 — Frontend .env (created only if missing — never clobbered)
 # ─────────────────────────────────────────────────────────────
-Write-Step "Writing frontend .env -> VITE_API_URL=http://$SERVER_IP`:$BACKEND_PORT"
-Set-Content -Path $UI_ENV_FILE -Encoding utf8 -Value "VITE_API_URL=http://$SERVER_IP`:$BACKEND_PORT`n"
-Write-OK "packages/ui/.env written"
+Write-Step "Checking frontend .env"
+if (Test-Path $UI_ENV_FILE) {
+    Write-OK "packages/ui/.env exists — leaving as-is (verify VITE_API_URL points at this server)"
+} else {
+    Set-Content -Path $UI_ENV_FILE -Encoding utf8 -Value @"
+VITE_API_URL=http://$SERVER_IP`:$BACKEND_PORT
+
+# Optional — GST tax invoices (set GSTIN to enable HSN + CGST/SGST breakup)
+VITE_COMPANY_GSTIN=
+VITE_COMPANY_ADDRESS=
+VITE_ICE_HSN_CODE=2201
+VITE_GST_RATE=5
+"@
+    Write-OK "packages/ui/.env created with VITE_API_URL=http://$SERVER_IP`:$BACKEND_PORT"
+}
 
 # ─────────────────────────────────────────────────────────────
-# STEP 3 — Write .env for backend
+# STEP 3 — Backend .env (template only — secrets are NEVER stored
+#          in this script; fill the placeholders before continuing)
 # ─────────────────────────────────────────────────────────────
-Write-Step "Writing backend .env"
-Set-Content -Path $ENV_FILE -Encoding utf8 -Value @"
+Write-Step "Checking backend .env"
+if (Test-Path $ENV_FILE) {
+    Write-OK "packages/services/.env exists — leaving as-is"
+} else {
+    Set-Content -Path $ENV_FILE -Encoding utf8 -Value @"
 PORT=$BACKEND_PORT
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
-DB_PASSWORD=5082093
+DB_PASSWORD=CHANGE_ME
 DB_NAME=ice-999
+DB_SYNCHRONIZE=true
 
-EMAIL_USER=mkillmessage18@gmail.com
-EMAIL_PASS=hhjj ghaw zuer oiwk
+# Password-reset OTP emails (Gmail app password or SMTP)
+EMAIL_USER=CHANGE_ME
+EMAIL_PASS=CHANGE_ME
 
-JWT_SECRET=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9-a2f8c3e9d7b1f4a5e8c2d9b6f3a7
-ENCRYPTION_KEY=4e8c6d1f3b5e0a9d2c7f4e8b1a3c5d9f6e2a7b0c4d8e1f3a5b9d6c2e7f2a9b3c
+# Generate with: openssl rand -hex 32 (or any long random string)
+JWT_SECRET=CHANGE_ME
+ENCRYPTION_KEY=CHANGE_ME
+
+# Razorpay (test keys start with rzp_test_)
+RAZORPAY_KEY_ID=CHANGE_ME
+RAZORPAY_KEY_SECRET=CHANGE_ME
+RAZORPAY_WEBHOOK_SECRET=
+
+# CORS allowlist — must include the frontend origin served by Nginx
+ALLOWED_ORIGINS=http://$SERVER_IP
+
+# Frontend URL used in WhatsApp replies
+APP_WEB_URL=http://$SERVER_IP
+
+# Optional — WhatsApp Business Cloud API (features dormant when unset)
+WHATSAPP_VERIFY_TOKEN=
+WHATSAPP_ACCESS_TOKEN=
+WHATSAPP_PHONE_NUMBER_ID=
+WHATSAPP_APP_SECRET=
 "@
-Write-OK ".env written to $ENV_FILE"
+    Write-Warn "packages/services/.env created with PLACEHOLDERS."
+    Write-Host "    Fill in every CHANGE_ME value, then re-run .\deploy.ps1" -ForegroundColor Yellow
+    exit 1
+}
+
+# Refuse to deploy with placeholder secrets still in place
+if (Select-String -Path $ENV_FILE -Pattern "CHANGE_ME" -Quiet) {
+    Write-Warn "packages/services/.env still contains CHANGE_ME placeholders."
+    Write-Host "    Fill in real values, then re-run .\deploy.ps1" -ForegroundColor Yellow
+    exit 1
+}
+Write-OK "Backend .env looks configured"
 
 # ─────────────────────────────────────────────────────────────
 # STEP 4 — Install npm dependencies

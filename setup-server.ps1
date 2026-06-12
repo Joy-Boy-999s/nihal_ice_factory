@@ -247,6 +247,12 @@ http {
             proxy_set_header   Connection 'upgrade';
             proxy_set_header   Host `$host;
             proxy_cache_bypass `$http_upgrade;
+
+            # Required for SSE live streams (notification bell, inventory):
+            # buffering would hold events back indefinitely.
+            proxy_buffering    off;
+            proxy_cache        off;
+            proxy_read_timeout 1h;
         }
     }
 }
@@ -337,28 +343,25 @@ Write-Host "  Nginx config  : $NGINX_DIR\conf\nginx.conf" -ForegroundColor White
 Write-Host ""
 Write-Host "  NEXT STEPS:" -ForegroundColor Yellow
 Write-Host "  1. Copy your project into $APP_DIR" -ForegroundColor White
-Write-Host "     (ZIP it on your local PC, paste via RDP, extract here)" -ForegroundColor Gray
+Write-Host "     (git clone, or ZIP it on your local PC, paste via RDP, extract here)" -ForegroundColor Gray
 Write-Host ""
-Write-Host "  2. Update the frontend API URL before building:" -ForegroundColor White
-Write-Host "     File: libs\shared-services\src\lib\config.ts" -ForegroundColor Gray
-Write-Host "     Change: 'http://localhost:3000'" -ForegroundColor Gray
-Write-Host "         To: 'http://$SERVER_IP`:3000'" -ForegroundColor Gray
+Write-Host "  2. Fill in the env files (see deployment.md Part 5/6):" -ForegroundColor White
+Write-Host "     packages\services\.env  - DB, JWT, email, Razorpay, ALLOWED_ORIGINS," -ForegroundColor Gray
+Write-Host "                               optional WhatsApp vars" -ForegroundColor Gray
+Write-Host "     packages\ui\.env        - VITE_API_URL=http://$SERVER_IP`:3000" -ForegroundColor Gray
+Write-Host "                               (+ optional VITE_COMPANY_GSTIN for GST invoices)" -ForegroundColor Gray
+Write-Host "     IMPORTANT: ALLOWED_ORIGINS must include http://$SERVER_IP" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "  3. Build both apps from project root:" -ForegroundColor White
+Write-Host "  3. Run the deploy script (writes ui .env, builds, starts PM2 + Nginx):" -ForegroundColor White
 Write-Host "     cd $APP_DIR" -ForegroundColor Gray
-Write-Host "     npm install" -ForegroundColor Gray
-Write-Host "     npx nx build @nihal-ice-factory/services --configuration=production" -ForegroundColor Gray
-Write-Host "     npx nx build @nihal-ice-factory/ui --configuration=production" -ForegroundColor Gray
+Write-Host "     .\deploy.ps1" -ForegroundColor Gray
 Write-Host ""
-Write-Host "  4. Start the backend with PM2:" -ForegroundColor White
-Write-Host "     cd $APP_DIR\packages\services" -ForegroundColor Gray
-Write-Host "     pm2 start dist\main.js --name ice-factory-api" -ForegroundColor Gray
-Write-Host "     pm2 save" -ForegroundColor Gray
+Write-Host "  4. Post-deploy config (deployment.md Part 13):" -ForegroundColor White
+Write-Host "     - Razorpay webhook -> /payment/webhook (+ RAZORPAY_WEBHOOK_SECRET)" -ForegroundColor Gray
+Write-Host "     - WhatsApp webhook -> /whatsapp/webhook (optional)" -ForegroundColor Gray
+Write-Host "     - Create the first ADMIN user" -ForegroundColor Gray
 Write-Host ""
-Write-Host "  5. Start Nginx:" -ForegroundColor White
-Write-Host "     $NGINX_DIR\nginx.exe" -ForegroundColor Gray
-Write-Host ""
-Write-Host "  6. Open in browser: http://$SERVER_IP" -ForegroundColor Cyan
+Write-Host "  5. Open in browser: http://$SERVER_IP" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  See deployment.md for full details." -ForegroundColor Gray
 Write-Host "============================================================" -ForegroundColor Green

@@ -117,37 +117,69 @@ Create the `.env` file for the backend on the server:
 cd C:\app\nihal_ice_factory\packages\services
 ```
 
-Edit `.env` (create if missing):
+Edit `.env` (create if missing). **Use your own values — never commit real
+secrets.** Generate secrets with `openssl rand -hex 32` (or any strong random
+string). If any credential below was ever committed to this repo, rotate it.
+
 ```env
 PORT=3000
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
-DB_PASSWORD=5082093
+DB_PASSWORD=<your-mysql-root-password>
 DB_NAME=ice-999
+# Set to false once the schema is stable (manage changes via migrations)
+DB_SYNCHRONIZE=true
 
-EMAIL_USER=mkillmessage18@gmail.com
-EMAIL_PASS=hhjj ghaw zuer oiwk
+# Password-reset OTP emails (Gmail app password or SMTP)
+EMAIL_USER=<your-email@gmail.com>
+EMAIL_PASS=<gmail-app-password>
 
-JWT_SECRET=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9-a2f8c3e9d7b1f4a5e8c2d9b6f3a7
-ENCRYPTION_KEY=4e8c6d1f3b5e0a9d2c7f4e8b1a3c5d9f6e2a7b0c4d8e1f3a5b9d6c2e7f2a9b3c
+JWT_SECRET=<long-random-string>
+ENCRYPTION_KEY=<64-char-hex>
+
+# Razorpay (test keys start with rzp_test_)
+RAZORPAY_KEY_ID=<rzp_test_...>
+RAZORPAY_KEY_SECRET=<...>
+# Secret you choose when creating the webhook in the Razorpay dashboard
+RAZORPAY_WEBHOOK_SECRET=<...>
+
+# CORS allowlist — MUST include the origin the frontend is served from,
+# e.g. http://52.87.217.163 for this Nginx setup. Comma-separated.
+ALLOWED_ORIGINS=http://52.87.217.163
+
+# Frontend URL used in WhatsApp replies
+APP_WEB_URL=http://52.87.217.163
+
+# Optional — WhatsApp Business Cloud API (ordering + alerts stay dormant when unset)
+WHATSAPP_VERIFY_TOKEN=
+WHATSAPP_ACCESS_TOKEN=
+WHATSAPP_PHONE_NUMBER_ID=
+WHATSAPP_APP_SECRET=
 ```
+
+> **`ALLOWED_ORIGINS` is critical**: the API rejects browser requests from
+> origins not on this list. If the frontend loads but every API call fails
+> with a CORS error, this is the first thing to check.
 
 ---
 
-## Part 6 — Fix Frontend API URL (IMPORTANT)
+## Part 6 — Frontend Environment (API URL + GST)
 
-The frontend is hardcoded to `http://localhost:3000`. This must be changed to the server's public IP **before building**, otherwise the browser will call `localhost` on the user's machine.
+The frontend reads its API base URL from `packages/ui/.env` at **build time**
+(`deploy.ps1` writes this automatically):
 
-Edit `C:\app\nihal_ice_factory\libs\shared-services\src\lib\config.ts`:
+```env
+VITE_API_URL=http://52.87.217.163:3000
 
-```typescript
-// Change this line:
-APP_INO_SERVICE_URL: 'http://localhost:3000',
-
-// To:
-APP_INO_SERVICE_URL: 'http://52.87.217.163:3000',
+# Optional — GST tax invoices (HSN column + CGST/SGST breakup when GSTIN is set)
+VITE_COMPANY_GSTIN=
+VITE_COMPANY_ADDRESS=
+VITE_ICE_HSN_CODE=2201
+VITE_GST_RATE=5
 ```
+
+Changing any `VITE_*` value requires rebuilding the frontend.
 
 ---
 
@@ -246,10 +278,21 @@ http {
             proxy_set_header Connection 'upgrade';
             proxy_set_header Host $host;
             proxy_cache_bypass $http_upgrade;
+
+            # Required for SSE (notification bell / inventory live streams):
+            # without these, Nginx buffers the stream and events never arrive.
+            proxy_buffering off;
+            proxy_cache off;
+            proxy_read_timeout 1h;
+            proxy_set_header X-Request-Id $request_id;
         }
     }
 }
 ```
+
+> The app currently calls the API directly on port 3000 (`VITE_API_URL`), so the
+> `/api/` proxy is optional. If you later switch the frontend to same-origin
+> `/api/` calls, the SSE settings above are mandatory.
 
 Start Nginx:
 ```powershell
@@ -307,6 +350,35 @@ Invoke-WebRequest -Uri "http://localhost:3000" -UseBasicParsing
 
 ---
 
+## Part 13 — Post-Deploy Configuration (Payments, WhatsApp, GST)
+
+### Razorpay webhook (recommended)
+Without it, payment status relies on the browser completing checkout.
+1. Razorpay Dashboard → **Settings → Webhooks → Add New Webhook**
+2. URL: `http://<server-ip>:3000/payment/webhook` (use HTTPS in real production)
+3. Secret: any strong random string → set the same value as `RAZORPAY_WEBHOOK_SECRET` in `.env`
+4. Events: `payment.captured`, `payment.failed`, `order.paid`
+5. Restart the backend: `pm2 restart ice-factory-api`
+
+### WhatsApp ordering + alerts (optional)
+1. Create a Meta app at developers.facebook.com → add the **WhatsApp** product
+2. Webhook URL: `http://<server-ip>:3000/whatsapp/webhook`, subscribe to **messages**,
+   verify token = your `WHATSAPP_VERIFY_TOKEN`
+3. Fill all four `WHATSAPP_*` vars in `.env` and restart the backend
+4. Only registered users with a linked mobile can order — customers auto-link on their
+   first in-app order; staff link via the user menu ("Link WhatsApp number")
+
+### GST invoices (optional)
+Set `VITE_COMPANY_GSTIN` / `VITE_COMPANY_ADDRESS` in `packages/ui/.env` and **rebuild
+the frontend** — invoices then render as GST tax invoices with HSN and CGST/SGST breakup.
+
+### First admin user
+Self-registration only creates CUSTOMER accounts. Create the first ADMIN directly in MySQL
+or temporarily via Swagger (`http://<server-ip>:3000/api`) before the createUser endpoint
+requires an admin token.
+
+---
+
 ## Useful PM2 Commands
 
 ```powershell
@@ -325,8 +397,11 @@ pm2 delete ice-factory-api        # Remove from PM2
 ```powershell
 cd C:\app\nihal_ice_factory
 
-# Pull latest changes (if using Git)
-git pull origin main
+# Pull latest changes (if using Git) — use your deployment branch
+git pull origin main          # or: git pull origin razorpay-demo
+
+# Run backend tests (payment webhook money-path suite)
+npx nx test @nihal-ice-factory/services
 
 # Rebuild
 npx nx build @nihal-ice-factory/services --configuration=production
@@ -337,6 +412,10 @@ pm2 restart ice-factory-api
 
 # Nginx serves static files directly — no restart needed for frontend changes
 ```
+
+> New tables/columns are created automatically on backend start while
+> `DB_SYNCHRONIZE=true`. If you've set it to `false`, apply schema changes manually
+> before restarting.
 
 ---
 

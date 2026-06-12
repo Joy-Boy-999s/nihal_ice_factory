@@ -1,21 +1,46 @@
 # Nihal Ice Factory
 
-Nx monorepo for the Nihal Ice Factory web app.
+Nx monorepo for the Nihal Ice Factory ERP — a dual-sided app for running an ice factory:
+staff manage plants, prices, slot-level inventory, sales, credit and fulfillment; customers
+order ice online (or over WhatsApp) with online payment or pay-on-delivery.
+
+## Features
+
+**Staff (ADMIN / USER-operator)**
+- Sales entry and history (plant-scoped per operator), Excel export, print invoices
+- Slot-grid inventory: production batches, ready/expiry tracking, sell/reserve/damage per slot
+- Customer **Orders** board with slot-level fulfillment (strict match against the order)
+- **Credit / Khata**: per-customer billed / paid / outstanding, cash collection at handover
+- **Production Plan**: upcoming advance bookings vs current stock, per-day shortfalls
+- Real-time **notification bell** (SSE) for new orders / payments / cancellations
+- Admin: dashboards, plant & price masters, user management, per-customer discount tiers, **audit log**
+
+**Customers (CUSTOMER role)**
+- Shop with live stock badges ("Only 3 left", "Out of stock — expected ~5 PM")
+- Normal (same-day, stock-reserved) or **advance bookings** for a future date
+- Pay online via **Razorpay** (UPI/cards/netbanking) or **pay on delivery**
+- Per-customer tiered discounts applied automatically
+- Order tracking (Preparing → Handed over), cancellation with automatic **refunds**, GST tax invoices
+- **WhatsApp ordering**: registered customers can order by messaging the factory number;
+  order updates mirror to WhatsApp
 
 ## Project Structure
 
-- `packages/ui`: React + Vite frontend
-- `packages/services`: NestJS API
-- `libs/shared-models`: shared DTOs and models
-- `libs/shared-services`: shared client/service helpers
-- `libs/backend-utils`: backend utilities and filters
+- `packages/ui` — React + Vite frontend (Vercel)
+- `packages/services` — NestJS API (Render): modules for User, Plant, IcePrice, Sales,
+  Inventory, Customer, CustomerDiscount, Payment (Razorpay + webhook), Notification (SSE),
+  Whatsapp (Meta Cloud API webhook), Audit
+- `libs/shared-models` — shared DTOs and models
+- `libs/shared-services` — typed API client helpers used by the frontend
+- `libs/backend-utils` — logging interceptor, exception filter (request-id correlation, redaction)
 
 ## Prerequisites
 
-- Node.js 20 or newer
-- npm
-- A MySQL database for the API
-- A Gmail account or SMTP-compatible mailbox for password reset emails
+- Node.js 20 or newer, npm
+- A MySQL 8 database
+- A Gmail account or SMTP-compatible mailbox (password reset emails)
+- Razorpay account (test keys work) for online payments
+- Optional: Meta WhatsApp Business Cloud API app for WhatsApp ordering
 
 ## Install
 
@@ -31,117 +56,107 @@ npm install --force
 
 ## Run Locally
 
-Start the frontend:
-
 ```bash
-npx nx serve ui
+npx nx serve services   # API on http://localhost:3000
+npx nx serve ui         # frontend on http://localhost:4200
 ```
 
-Start the backend API:
+Copy `packages/services/.env.example` to `packages/services/.env` and
+`packages/ui/.env.example` to `packages/ui/.env` first, and fill in real values.
 
-```bash
-npx nx serve services
-```
+> Local-dev tip: keep only one or two app tabs open. Each tab holds a live SSE
+> connection and browsers cap plain HTTP at 6 connections per origin — many open
+> tabs can make API calls queue (production uses HTTP/2 and is unaffected;
+> hidden tabs also auto-release their stream).
 
-Frontend runs on `http://localhost:4200` and the API listens on `http://localhost:3000` by default.
-
-## Build
-
-Build the frontend:
+## Build, Test, Lint
 
 ```bash
 npx nx build ui
-```
-
-Build the backend:
-
-```bash
 npx nx build services
-```
-
-Useful validation commands:
-
-```bash
+npx nx test @nihal-ice-factory/services   # vitest — payment webhook money-path suite
 npx nx lint ui
 npx nx lint services
 npx nx typecheck ui
 npx nx typecheck services
 ```
 
+CI (`.github/workflows/ci.yml`) runs lint/test/build for affected projects on pushes to
+`main` and `razorpay-demo`, and on all pull requests.
+
 ## Environment Variables
 
-### Backend required envs
+### Backend (`packages/services/.env` — see `.env.example`)
 
-Create a `.env` file at the repository root for local development.
+| Variable | Required | Purpose |
+|---|---|---|
+| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` | yes | MySQL connection |
+| `DB_SYNCHRONIZE` | no | `true` (default) auto-syncs schema; set `false` once the schema is stable |
+| `DB_LOGGING` | no | `true` logs SQL queries |
+| `JWT_SECRET` | yes | JWT signing/validation |
+| `ENCRYPTION_KEY` | yes | user login flow |
+| `EMAIL_USER` / `EMAIL_PASS` | yes | password-reset OTP emails |
+| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | yes for payments | Razorpay API keys |
+| `RAZORPAY_WEBHOOK_SECRET` | recommended | verifies `POST /payment/webhook` (configure the webhook in the Razorpay dashboard with events `payment.captured`, `payment.failed`, `order.paid`) |
+| `ALLOWED_ORIGINS` | prod | comma-separated CORS allowlist; defaults to `http://localhost:4200,https://nihal-ice-factory.vercel.app` — **add any new frontend domain here** |
+| `APP_WEB_URL` | no | frontend URL used in WhatsApp replies |
+| `WHATSAPP_VERIFY_TOKEN` / `WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` / `WHATSAPP_APP_SECRET` | for WhatsApp | Meta Cloud API; webhook URL is `https://<api>/whatsapp/webhook` subscribed to `messages`. Features stay dormant when unset |
+| `LOG_LEVEL` | no | comma-separated Nest log levels (prod default `log,warn,error`) |
+| `PORT` | no | injected by the host; defaults to 3000 |
+| `NODE_ENV` | — | `development` loads `.env` from the repo; production uses host env vars and JSON logs |
 
-```env
-DB_HOST=
-DB_PORT=
-DB_USER=
-DB_PASSWORD=
-DB_NAME=
-JWT_SECRET=
-ENCRYPTION_KEY=
-EMAIL_USER=
-EMAIL_PASS=
-```
+### Frontend (`packages/ui/.env` — see `.env.example`)
 
-Notes:
+| Variable | Required | Purpose |
+|---|---|---|
+| `VITE_API_URL` | yes | API base URL (e.g. `http://localhost:3000` or your Render URL) |
+| `VITE_COMPANY_GSTIN` | no | when set, invoices render as GST tax invoices (HSN + CGST/SGST breakup) |
+| `VITE_COMPANY_ADDRESS` | no | seller address on invoices |
+| `VITE_ICE_HSN_CODE` | no | HSN code for ice (default `2201`) |
+| `VITE_GST_RATE` | no | inclusive GST rate percent (default `5`) |
 
-- `DB_*` values are required by the NestJS database module.
-- `JWT_SECRET` is required for JWT signing and validation.
-- `ENCRYPTION_KEY` is required by the user service login flow.
-- `EMAIL_USER` and `EMAIL_PASS` are required for password reset email delivery.
-- `PORT` is usually injected by the hosting platform and defaults to `3000` locally if not set.
-- `NODE_ENV=development` makes the API load `.env` from the repository root.
+## Deployment
 
-### Frontend envs
+The live stack is **Vercel (frontend) + Render (backend) + Aiven MySQL**.
 
-No frontend environment variables are required in the current codebase.
-The API base URL is defined in `libs/shared-services/src/lib/config.ts`.
+### Vercel (frontend)
 
-## Deploying to Vercel
+1. Import the repository; root directory = repository root.
+2. Build command `npx nx build ui`, output directory `dist/packages/ui`.
+3. Set `VITE_API_URL` (+ the optional `VITE_COMPANY_*` GST vars).
+4. `vercel.json` already provides the SPA rewrite and security headers (CSP allows
+   Razorpay checkout; update it if you add other third-party scripts).
 
-Vercel is a good fit for the frontend only. The backend API is a separate Node application and should stay on a Node host such as Render.
+### Render (backend)
 
-### Vercel setup for `packages/ui`
+Set every backend env var above in the Render dashboard. After the first deploy:
 
-1. Import the repository into Vercel.
-2. Set the root directory to the repository root.
-3. Use this build command:
+- add the Razorpay webhook (`https://<api>/payment/webhook`) and set `RAZORPAY_WEBHOOK_SECRET`
+- if using WhatsApp, register `https://<api>/whatsapp/webhook` in the Meta app and set the `WHATSAPP_*` vars
+- make sure the Vercel domain is included in `ALLOWED_ORIGINS`
 
-```bash
-npx nx build ui
-```
+### Self-hosted (Windows EC2 + Nginx + PM2)
 
-4. Set the output directory to:
+See `deployment.md` (manual walkthrough), `setup-server.ps1` (one-time server setup) and
+`deploy.ps1` (build + start). For Ubuntu EC2 see `aws-deploy-guide.md`. When self-hosting,
+SSE requires `proxy_buffering off` in Nginx, and the server's public origin must be added
+to `ALLOWED_ORIGINS`.
 
-```text
-dist/packages/ui
-```
+## Operational Notes
 
-5. Leave frontend env vars empty unless you later move the API URL into an env var.
-
-### SPA routing on Vercel
-
-If you use client-side routes, add a `vercel.json` file with a rewrite so refreshes on nested routes still work:
-
-```json
-{
-	"rewrites": [
-		{ "source": "/(.*)", "destination": "/index.html" }
-	]
-}
-```
-
-### Backend deployment
-
-The repository already includes a Render deployment manifest at `packages/services/.render.yaml`. If you deploy the API elsewhere, make sure the same backend env vars are set there.
+- Every request/response is logged with a duration and `requestId` (echoed in the
+  `x-request-id` header); errors include redacted bodies. Frontend errors ship to
+  `POST /client-logs` and appear in the backend log stream as `[ClientLog]`.
+- Auth endpoints are rate-limited (login 10/min, OTP 3/min). Payments, cancellations and
+  admin actions are written to the **audit log** (`/audit`, admin page in the UI).
+- Swagger UI is served by the API at `/api` (configured in `packages/services/src/swagger`).
 
 ## Quick Start
 
 ```bash
 npm install
+cp packages/services/.env.example packages/services/.env   # then fill values
+cp packages/ui/.env.example packages/ui/.env
 npx nx serve services
 npx nx serve ui
 ```
