@@ -73,6 +73,24 @@
   line-height: 1.6;
 }
 
+.inv-header__seller {
+  font-size: 0.74rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  max-width: 280px;
+}
+
+/* GST breakup rows — quieter than subtotal/total */
+.inv-totals__row--tax {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.inv-footer__legal {
+  font-size: 0.72rem;
+  font-style: italic;
+}
+
 .inv-divider {
   height: 1px;
   background: var(--color-border);

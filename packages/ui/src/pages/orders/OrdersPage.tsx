@@ -9,7 +9,7 @@ import { FulfillModal } from './components/FulfillModal';
 import './styles/orders.css';
 
 /* ── Types ── */
-export type PaymentStatus     = 'PENDING' | 'PAID' | 'FAILED' | 'NOT_INITIATED';
+export type PaymentStatus     = 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED' | 'NOT_INITIATED';
 export type FulfillmentStatus = 'PENDING' | 'FULFILLED' | 'CANCELLED';
 
 export interface OrderItem { iceTypeId: number; iceTypeName: string; quantity: number; price: number; subtotal: number }
@@ -39,7 +39,9 @@ type OrderFilter = 'ALL' | 'PENDING' | 'ADVANCE' | 'FULFILLED';
 
 /* ── Badges ── */
 const PayBadge: React.FC<{ order: CustomerOrder }> = ({ order }) => {
+  if (order.paymentStatus === 'REFUNDED') return <span className="op-badge op-badge--refunded">Refunded</span>;
   if (order.paymentStatus === 'PAID') return <span className="op-badge op-badge--paid">Paid</span>;
+  if (order.fulfillmentStatus === 'CANCELLED') return <span className="op-badge op-badge--cancelled">—</span>;
   if (order.payMode === 'COD')        return <span className="op-badge op-badge--cod">COD — collect payment</span>;
   if (order.paymentStatus === 'FAILED') return <span className="op-badge op-badge--failed">Payment failed</span>;
   return <span className="op-badge op-badge--unpaid">Unpaid</span>;

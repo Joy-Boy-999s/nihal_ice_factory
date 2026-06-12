@@ -45,4 +45,9 @@ export class CustomerHelpService extends CommonAxiosService {
   async getMyOrders(config?: AxiosRequestConfig): Promise<CommonResponse> {
     return this.axiosGetCall(this.ep('my-orders'), config);
   }
+
+  /** Cancel an unfulfilled order — releases held stock and refunds online payments. */
+  async cancelOrder(saleId: number, config?: AxiosRequestConfig): Promise<CommonResponse> {
+    return this.axiosPostCall(this.ep(`orders/${saleId}/cancel`), {}, config);
+  }
 }

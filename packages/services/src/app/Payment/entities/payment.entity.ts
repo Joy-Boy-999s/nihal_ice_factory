@@ -1,6 +1,6 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
-export type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED';
+export type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
 
 @Entity('payments')
 export class Payment {
@@ -27,6 +27,9 @@ export class Payment {
 
   @Column({ nullable: true })
   failureReason: string;
+
+  @Column({ nullable: true })
+  razorpayRefundId: string;
 
   @Column({ nullable: true })
   customerName: string;

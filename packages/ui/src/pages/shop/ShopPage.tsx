@@ -116,6 +116,7 @@ const ShopPage: React.FC = () => {
       const env  = res.data as ResponsePayloadRecord | null;
       const data = (env?.['data'] ?? env) as {
         plants?: Plant[]; iceTypes?: IceType[]; discountTiers?: DiscountTier[]; stock?: StockInfo[];
+        profile?: { name: string; mobile: string; address: string } | null;
       } | null;
 
       const plantList    = Array.isArray(data?.plants)         ? data!.plants         : [];
@@ -128,6 +129,12 @@ const ShopPage: React.FC = () => {
       setStock(stockList);
       if (initial) {
         if (plantList.length > 0) selectPlant(plantList[0].plantName, iceTypeList);
+        // Prefill details from the customer's last order — only untouched fields
+        if (data?.profile) {
+          setName((v) => v || data.profile!.name || '');
+          setMobile((v) => v || data.profile!.mobile || '');
+          setAddress((v) => v || data.profile!.address || '');
+        }
         setPageStatus('idle');
       }
     } catch (err) {

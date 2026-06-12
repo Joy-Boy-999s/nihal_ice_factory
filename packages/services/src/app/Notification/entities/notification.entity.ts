@@ -6,7 +6,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
-export type NotificationType = 'ORDER_PLACED' | 'ORDER_PAID' | 'ORDER_FULFILLED';
+export type NotificationType = 'ORDER_PLACED' | 'ORDER_PAID' | 'ORDER_FULFILLED' | 'ORDER_CANCELLED';
 
 /** Extra payload carried by a notification — used by the UI for deep links. */
 export interface NotificationData {

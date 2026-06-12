@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { CustomerService } from './customer.service';
 import { PlaceOrderDto } from './dto/place-order.dto';
 import { VerifyPaymentDto } from '../Payment/dto/verify-payment.dto';
@@ -45,6 +45,17 @@ export class CustomerController {
       dto.razorpayPaymentId,
       dto.razorpaySignature,
     );
+  }
+
+  // POST /customer/orders/:saleId/cancel — cancel an unfulfilled order (refunds if paid)
+  @Post('orders/:saleId/cancel')
+  @ApiParam({ name: 'saleId', type: Number })
+  @ApiOperation({ summary: 'Cancel an unfulfilled order — releases stock and refunds online payments' })
+  async cancelOrder(
+    @Param('saleId', ParseIntPipe) saleId: number,
+    @GetUser() user: JwtUser,
+  ): Promise<CommonResponse> {
+    return this.customerService.cancelOrder(saleId, user);
   }
 
   // GET /customer/my-orders — view own order history with payment status

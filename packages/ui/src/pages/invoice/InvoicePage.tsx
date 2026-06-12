@@ -5,6 +5,7 @@ import type { ResponsePayloadRecord } from '@nihal-ice-factory/shared-models';
 import { Button, PageHeader, PageLoader, useToast } from '../../components';
 import { buildAuthConfig, logout } from '../../lib/auth';
 import { formatCurrency } from '../../lib/pricing';
+import { COMPANY, gstBreakupFromInclusive } from '../../lib/company';
 import './styles/invoice.css';
 
 interface OrderItem { iceTypeName: string; quantity: number; price: number; subtotal: number }
@@ -74,6 +75,8 @@ const InvoicePage: React.FC = () => {
   const subtotal    = activeItems.reduce((s, i) => s + Number(i.subtotal), 0);
   const total       = Number(order.totalAmount);
   const isPaid      = order.paymentStatus === 'PAID';
+  // Prices are GST-inclusive — derive the statutory breakup from the total
+  const gst         = COMPANY.gstin ? gstBreakupFromInclusive(total) : null;
 
   return (
     <div className="inv-page">
@@ -98,14 +101,17 @@ const InvoicePage: React.FC = () => {
           <div className="inv-header__brand">
             <div className="inv-header__logo">❄</div>
             <div>
-              <div className="inv-header__company">Nihal Ice Factory</div>
-              <div className="inv-header__tagline">Pure Ice — Delivered Fresh</div>
+              <div className="inv-header__company">{COMPANY.name}</div>
+              <div className="inv-header__tagline">{COMPANY.tagline}</div>
+              {COMPANY.address && <div className="inv-header__seller">{COMPANY.address}</div>}
+              {COMPANY.gstin && <div className="inv-header__seller">GSTIN: {COMPANY.gstin}</div>}
             </div>
           </div>
           <div className="inv-header__meta">
             <div className="inv-header__title">
-              {isPaid ? 'RECEIPT' : 'INVOICE'}
+              {isPaid ? 'TAX INVOICE' : 'INVOICE'}
             </div>
+            <div className="inv-header__detail">Invoice No: INV-{String(order.id).padStart(5, '0')}</div>
             <div className="inv-header__detail">Order #{order.id}</div>
             <div className="inv-header__detail">{order.date} at {order.time}</div>
             <div className="inv-header__detail">Plant: {order.unit}</div>
@@ -128,6 +134,7 @@ const InvoicePage: React.FC = () => {
             <tr>
               <th>#</th>
               <th>Item</th>
+              {COMPANY.gstin && <th>HSN</th>}
               <th className="inv-table__right">Qty</th>
               <th className="inv-table__right">Unit Price</th>
               <th className="inv-table__right">Amount</th>
@@ -138,6 +145,7 @@ const InvoicePage: React.FC = () => {
               <tr key={idx}>
                 <td className="inv-table__idx">{idx + 1}</td>
                 <td>{item.iceTypeName}</td>
+                {COMPANY.gstin && <td>{COMPANY.hsnCode}</td>}
                 <td className="inv-table__right">{item.quantity}</td>
                 <td className="inv-table__right">{formatCurrency(Number(item.price))}</td>
                 <td className="inv-table__right">{formatCurrency(Number(item.subtotal))}</td>
@@ -158,8 +166,24 @@ const InvoicePage: React.FC = () => {
               <span>−{formatCurrency(discount)}</span>
             </div>
           )}
+          {gst && (
+            <>
+              <div className="inv-totals__row inv-totals__row--tax">
+                <span>Taxable Value</span>
+                <span>{formatCurrency(gst.taxableValue)}</span>
+              </div>
+              <div className="inv-totals__row inv-totals__row--tax">
+                <span>CGST @ {gst.ratePercent / 2}%</span>
+                <span>{formatCurrency(gst.cgst)}</span>
+              </div>
+              <div className="inv-totals__row inv-totals__row--tax">
+                <span>SGST @ {gst.ratePercent / 2}%</span>
+                <span>{formatCurrency(gst.sgst)}</span>
+              </div>
+            </>
+          )}
           <div className="inv-totals__row inv-totals__row--total">
-            <span>Total</span>
+            <span>Total{gst ? ' (incl. GST)' : ''}</span>
             <span>{formatCurrency(total)}</span>
           </div>
         </div>
@@ -189,6 +213,7 @@ const InvoicePage: React.FC = () => {
 
         {/* Footer */}
         <div className="inv-footer">
+          {COMPANY.gstin && <p className="inv-footer__legal">This is a computer-generated invoice. Prices are inclusive of GST.</p>}
           <p>Thank you for your order! For queries contact us at your nearest Nihal Ice Factory outlet.</p>
           <p className="inv-footer__generated">Generated on {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
         </div>

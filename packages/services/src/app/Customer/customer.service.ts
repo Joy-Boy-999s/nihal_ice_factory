@@ -48,11 +48,12 @@ export class CustomerService {
    */
   async getShopData(customerId: string): Promise<CommonResponse> {
     try {
-      const [plants, iceTypes, discountTiersRes, stock] = await Promise.all([
+      const [plants, iceTypes, discountTiersRes, stock, lastSale] = await Promise.all([
         this.plantService.getAllActive(),
         this.iceTypeService.getActive(),
         this.discountService.getTiers(customerId),
         this.inventoryService.getShopAvailability().catch(() => []),
+        this.salesRepo.findOne({ where: { customerId }, order: { id: 'DESC' } }),
       ]);
 
       const discountTiers = discountTiersRes.status ? (discountTiersRes.data ?? []) : [];
@@ -62,6 +63,10 @@ export class CustomerService {
         iceTypes,
         discountTiers,
         stock,
+        // Prefill for repeat orders — customers shouldn't retype their details
+        profile: lastSale
+          ? { name: lastSale.name, mobile: lastSale.mobile, address: lastSale.shop }
+          : null,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch shop data';
@@ -320,6 +325,99 @@ export class CustomerService {
       }
     } catch {
       // hooks must never break payment verification
+    }
+  }
+
+  /**
+   * Cancels a customer order: releases held stock, refunds online payments
+   * via Razorpay, and notifies the plant. Fulfilled orders cannot be
+   * cancelled. Customers may only cancel their own orders.
+   */
+  async cancelOrder(
+    saleId: number,
+    user: { userId: string; username: string; role: string },
+  ): Promise<CommonResponse> {
+    try {
+      const sale = await this.salesRepo.findOne({ where: { id: saleId } });
+      if (!sale) return new CommonResponse(false, 404, `Order ${saleId} not found`, null);
+      if (!sale.customerId) {
+        return new CommonResponse(false, 400, 'Only customer orders can be cancelled here', null);
+      }
+      if (user.role === 'CUSTOMER' && sale.customerId !== user.userId) {
+        return new CommonResponse(false, 403, 'You can only cancel your own orders', null);
+      }
+      if (sale.fulfillmentStatus === 'CANCELLED') {
+        return new CommonResponse(false, 409, 'Order is already cancelled', null);
+      }
+      if (sale.fulfillmentStatus === 'FULFILLED') {
+        return new CommonResponse(false, 409, 'Order has already been handed over — contact the factory for returns', null);
+      }
+
+      const payment = await this.paymentRepo.findOne({
+        where: { saleId },
+        order: { createdAt: 'DESC' },
+      });
+
+      // Refund FIRST — if Razorpay rejects it, the order stays active so the
+      // customer can retry instead of losing both the ice and the money.
+      let refundId: string | null = null;
+      if (payment?.status === 'PAID' && payment.razorpayPaymentId) {
+        try {
+          const refund = (await this.razorpay.payments.refund(payment.razorpayPaymentId, {
+            speed: 'normal',
+            notes: { reason: `Order #${saleId} cancelled by ${user.username}` },
+          })) as { id?: string };
+          refundId = refund?.id ?? null;
+
+          payment.status = 'REFUNDED';
+          payment.razorpayRefundId = refundId ?? '';
+          await this.paymentRepo.save(payment);
+        } catch (refundErr) {
+          const msg = refundErr instanceof Error ? refundErr.message : 'Refund failed';
+          return new CommonResponse(false, 502, `Could not process refund — order not cancelled. ${msg}`, null);
+        }
+      } else if (payment?.status === 'PENDING') {
+        payment.status = 'FAILED';
+        payment.failureReason = 'Order cancelled';
+        await this.paymentRepo.save(payment);
+      }
+
+      // Free any stock still held for this order
+      await this.inventoryService.releaseSlotsForSale(saleId).catch(() => undefined);
+
+      sale.fulfillmentStatus = 'CANCELLED';
+      sale.cancelledBy = user.username;
+      sale.cancelledAt = new Date();
+      await this.salesRepo.save(sale);
+
+      // Notify the plant; if an admin cancelled, also tell the customer
+      await this.notificationService.notifyPlantOperators(
+        sale.unit,
+        'ORDER_CANCELLED',
+        `Order #${sale.id} cancelled — ${sale.unit}`,
+        `${sale.name}'s order for ${sale.totalUnits} unit(s) was cancelled by ${user.username}` +
+          (refundId ? ` — ₹${sale.totalAmount} refunded` : ''),
+        { saleId: sale.id },
+      );
+      if (user.role !== 'CUSTOMER') {
+        await this.notificationService.notifyUsers(
+          [sale.customerId],
+          'ORDER_CANCELLED',
+          `Order #${sale.id} was cancelled`,
+          `Your order was cancelled by the factory.` + (refundId ? ` ₹${sale.totalAmount} has been refunded.` : ''),
+          { saleId: sale.id, plantUnit: sale.unit },
+        );
+      }
+
+      return new CommonResponse(true, 200, refundId ? 'Order cancelled and refund initiated' : 'Order cancelled', {
+        saleId: sale.id,
+        fulfillmentStatus: sale.fulfillmentStatus,
+        paymentStatus: payment?.status ?? 'NOT_INITIATED',
+        refundId,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to cancel order';
+      return new CommonResponse(false, 500, message, null);
     }
   }
 

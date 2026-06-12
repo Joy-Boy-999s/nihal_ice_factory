@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import {
   CommonResponse,
   CreateUserModel,
@@ -43,6 +44,7 @@ export class UserController {
 
   /** Public customer self-registration — role is always forced to CUSTOMER. */
   @Post('registerCustomer')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiBody({ type: CreateUserModel })
   @ApiOperation({ summary: 'Customer self-registration (role forced to CUSTOMER)' })
   async registerCustomer(@Body() reqModel: CreateUserModel): Promise<CommonResponse> {
@@ -54,6 +56,7 @@ export class UserController {
   }
 
   @Post('loginUser')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @ApiBody({ type: UserLoginModel })
   @ApiOperation({ summary: 'Authenticate and receive a JWT (public)' })
   async loginUser(@Body() userLoginDto: UserLoginModel): Promise<CommonResponse> {
@@ -65,6 +68,7 @@ export class UserController {
   }
 
   @Post('forgotPassword')
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
   @ApiBody({ type: EmailRequestModel })
   @ApiOperation({ summary: 'Send a password-reset OTP to the user\'s email (public)' })
   async forgotPassword(@Body() reqModel: EmailRequestModel): Promise<CommonResponse> {
@@ -76,6 +80,7 @@ export class UserController {
   }
 
   @Post('resetPassword')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiBody({ type: ResetPassowordModel })
   @ApiOperation({ summary: 'Reset password using a valid OTP (public)' })
   async resetPassword(@Body() reqModel: ResetPassowordModel): Promise<CommonResponse> {

@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - razorpay-demo
   pull_request:
 
 permissions:

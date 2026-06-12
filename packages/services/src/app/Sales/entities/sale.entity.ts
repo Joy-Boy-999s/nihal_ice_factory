@@ -87,4 +87,10 @@ export class Sale {
 
   @Column({ type: 'timestamp', nullable: true })
   fulfilledAt?: Date | null;
+
+  @Column({ nullable: true })
+  cancelledBy?: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  cancelledAt?: Date | null;
 }

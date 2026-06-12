@@ -256,6 +256,12 @@
   border: 1px solid var(--color-border);
 }
 
+.op-badge--refunded {
+  background: color-mix(in srgb, #6366f1 12%, transparent);
+  color: var(--color-primary);
+  border: 1px solid color-mix(in srgb, #6366f1 32%, transparent);
+}
+
 /* ── Empty ── */
 .op-empty {
   display: flex;

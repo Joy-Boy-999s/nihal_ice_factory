@@ -8,7 +8,7 @@ import { formatCurrency } from '../../lib/pricing';
 import './styles/my-orders.css';
 
 /* ── Types ── */
-type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'NOT_INITIATED';
+type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED' | 'NOT_INITIATED';
 type OrderFilter   = 'ALL' | 'PAID' | 'UNPAID';
 
 interface OrderItem { iceTypeName: string; quantity: number; price: number; subtotal: number }
@@ -35,10 +35,11 @@ interface CustomerOrder {
 /* ── Status badge ── */
 const StatusBadge: React.FC<{ status: PaymentStatus }> = ({ status }) => {
   const map: Record<PaymentStatus, { cls: string; label: string }> = {
-    PAID:          { cls: 'paid',          label: 'Paid'    },
-    PENDING:       { cls: 'pending',       label: 'Pending' },
-    FAILED:        { cls: 'failed',        label: 'Failed'  },
-    NOT_INITIATED: { cls: 'not-initiated', label: 'Unpaid'  },
+    PAID:          { cls: 'paid',          label: 'Paid'     },
+    PENDING:       { cls: 'pending',       label: 'Pending'  },
+    FAILED:        { cls: 'failed',        label: 'Failed'   },
+    REFUNDED:      { cls: 'refunded',      label: 'Refunded' },
+    NOT_INITIATED: { cls: 'not-initiated', label: 'Unpaid'   },
   };
   const { cls, label } = map[status] ?? { cls: 'not-initiated', label: status };
   return <span className={`order-status order-status--${cls}`}>{label}</span>;
@@ -53,6 +54,34 @@ const MyOrdersPage: React.FC = () => {
   const [orders,  setOrders]  = useState<CustomerOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter,  setFilter]  = useState<OrderFilter>('ALL');
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
+
+  const handleCancel = async (order: CustomerOrder) => {
+    const refundNote = order.paymentStatus === 'PAID'
+      ? ' Your payment will be refunded.'
+      : '';
+    if (!window.confirm(`Cancel order #${order.id}?${refundNote}`)) return;
+
+    setCancellingId(order.id);
+    try {
+      const res = await svc.cancelOrder(order.id, buildAuthConfig());
+      if (!res?.status) throw new Error(res?.internalMessage || 'Could not cancel order');
+      const env  = res.data as ResponsePayloadRecord | null;
+      const data = (env?.['data'] ?? env) as { paymentStatus?: PaymentStatus; refundId?: string | null } | null;
+
+      setOrders((prev) => prev.map((o) => o.id === order.id
+        ? { ...o, fulfillmentStatus: 'CANCELLED', paymentStatus: data?.paymentStatus ?? o.paymentStatus }
+        : o,
+      ));
+      toast.success(data?.refundId ? 'Order cancelled — refund initiated' : 'Order cancelled');
+    } catch (err) {
+      if (!handleAuthError(err)) {
+        toast.error(err instanceof Error ? err.message : 'Could not cancel order');
+      }
+    } finally {
+      setCancellingId(null);
+    }
+  };
 
   const handleAuthError = useCallback((err: unknown): boolean => {
     const e = err as { response?: { status?: number } };
@@ -182,6 +211,8 @@ const MyOrdersPage: React.FC = () => {
             {visibleOrders.map((order) => {
               const activeItems = (order.items ?? []).filter((i) => i.quantity > 0);
               const isPaid      = order.paymentStatus === 'PAID';
+              const isCancelled = order.fulfillmentStatus === 'CANCELLED';
+              const canCancel   = order.fulfillmentStatus === 'PENDING';
               return (
                 <div key={order.id} className="order-card">
                   <div className="order-card__header">
@@ -214,6 +245,9 @@ const MyOrdersPage: React.FC = () => {
                       {order.fulfillmentStatus === 'FULFILLED' && (
                         <span className="order-status order-status--ready">Handed over</span>
                       )}
+                      {order.fulfillmentStatus === 'CANCELLED' && (
+                        <span className="order-status order-status--cancelled">Cancelled</span>
+                      )}
                     </div>
                   </div>
 
@@ -233,12 +267,23 @@ const MyOrdersPage: React.FC = () => {
                       <span className="order-card__amount">{formatCurrency(Number(order.totalAmount))}</span>
                     </div>
                     <div className="order-card__actions">
-                      {!isPaid && (
+                      {canCancel && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleCancel(order)}
+                          loading={cancellingId === order.id}
+                          disabled={cancellingId !== null}
+                        >
+                          Cancel
+                        </Button>
+                      )}
+                      {!isPaid && !isCancelled && (
                         <Button size="sm" onClick={() => navigate(`/payment/${order.id}`)}>
                           Pay Now
                         </Button>
                       )}
-                      {isPaid && (
+                      {isPaid && !isCancelled && (
                         <Button
                           size="sm"
                           variant="secondary"
