@@ -442,6 +442,7 @@ export class CustomerService {
       const sales = await this.salesRepo.find({
         where: { customerId },
         order: { id: 'DESC' },
+        take: 200,
       });
 
       if (sales.length === 0) {

@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { CustomerHelpService } from '@nihal-ice-factory/shared-services';
 import type { ResponsePayloadRecord } from '@nihal-ice-factory/shared-models';
 import { Button, Card, PageHeader, PageLoader, useToast } from '../../components';
-import { buildAuthConfig, logout } from '../../lib/auth';
+import { buildAuthConfig, getUserId, logout } from '../../lib/auth';
 import { formatCurrency } from '../../lib/pricing';
+import { readCache, writeCache } from '../../lib/swr-cache';
 import './styles/my-orders.css';
 
 /* ── Types ── */
@@ -96,6 +97,15 @@ const MyOrdersPage: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
+
+    // Instant paint from this session's cache; background refresh follows.
+    const cacheKey = `nif:orders:${getUserId() ?? 'anon'}`;
+    const cached = readCache<CustomerOrder[]>(cacheKey, 10 * 60_000);
+    if (cached) {
+      setOrders(cached);
+      setLoading(false);
+    }
+
     (async () => {
       try {
         const res = await svc.getMyOrders(buildAuthConfig());
@@ -104,10 +114,13 @@ const MyOrdersPage: React.FC = () => {
 
         const env  = res.data as ResponsePayloadRecord | null;
         const data = (env?.['data'] ?? env) as CustomerOrder[] | null;
-        setOrders(Array.isArray(data) ? data : []);
+        const list = Array.isArray(data) ? data : [];
+        writeCache(cacheKey, list);
+        setOrders(list);
       } catch (err) {
         if (cancelled) return;
-        if (!handleAuthError(err)) toast.error('Failed to load orders');
+        // With cached data on screen a failed background refresh is non-fatal
+        if (!handleAuthError(err) && !cached) toast.error('Failed to load orders');
       } finally {
         if (!cancelled) setLoading(false);
       }

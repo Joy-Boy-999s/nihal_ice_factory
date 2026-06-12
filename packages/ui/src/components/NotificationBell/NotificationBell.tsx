@@ -87,13 +87,33 @@ export const NotificationBell: React.FC = () => {
       };
     };
 
+    /*
+     * Pause the stream while the tab is hidden. Browsers cap HTTP/1.1 at six
+     * connections per origin ACROSS tabs — in local dev several open tabs
+     * each pinning an SSE socket can starve normal API requests entirely.
+     * Hidden tabs release their socket; on return we reconnect and resync.
+     */
+    const onVisibility = () => {
+      if (document.hidden) {
+        esRef.current?.close();
+        esRef.current = null;
+        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+      } else if (!esRef.current && !stopped) {
+        retryRef.current = 0;
+        connect();
+        load(); // catch anything missed while hidden
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
     connect();
     return () => {
       stopped = true;
+      document.removeEventListener('visibilitychange', onVisibility);
       if (reconnectTimer) clearTimeout(reconnectTimer);
       esRef.current?.close();
     };
-  }, [svc, toast]);
+  }, [svc, toast, load]);
 
   /* ── Close on outside click ── */
   useEffect(() => {

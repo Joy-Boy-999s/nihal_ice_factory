@@ -148,26 +148,46 @@ export function useInventory() {
     const token = getToken();
     if (!token) return;
 
-    const url = svc.getStreamUrl(token);
-    const es  = new EventSource(url);
-    esRef.current = es;
+    const connect = () => {
+      const url = svc.getStreamUrl(token);
+      const es  = new EventSource(url);
+      esRef.current = es;
 
-    es.addEventListener('inventory', (e: MessageEvent) => {
-      try {
-        const parsed = JSON.parse(e.data);
-        const raw = parsed?.data?.data ?? parsed?.data ?? [];
-        if (Array.isArray(raw)) {
-          setSummary(raw);
-          setLastUpdated(new Date().toLocaleTimeString());
-        }
-      } catch { /* ignore parse errors */ }
-    });
+      es.addEventListener('inventory', (e: MessageEvent) => {
+        try {
+          const parsed = JSON.parse(e.data);
+          const raw = parsed?.data?.data ?? parsed?.data ?? [];
+          if (Array.isArray(raw)) {
+            setSummary(raw);
+            setLastUpdated(new Date().toLocaleTimeString());
+          }
+        } catch { /* ignore parse errors */ }
+      });
 
-    es.onerror = () => {
-      // SSE will auto-reconnect; don't surface as error
+      es.onerror = () => {
+        // SSE will auto-reconnect; don't surface as error
+      };
     };
 
-    return () => { es.close(); esRef.current = null; };
+    // Hidden tabs release their SSE socket — browsers cap HTTP/1.1 at six
+    // connections per origin across ALL tabs, and pinned streams in
+    // background tabs can starve normal API requests (worst in local dev).
+    const onVisibility = () => {
+      if (document.hidden) {
+        esRef.current?.close();
+        esRef.current = null;
+      } else if (!esRef.current) {
+        connect();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    connect();
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      esRef.current?.close();
+      esRef.current = null;
+    };
   }, [svc]);
 
   // Initial load

@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { CustomerHelpService, PaymentHelpService } from '@nihal-ice-factory/shared-services';
 import type { ResponsePayloadRecord } from '@nihal-ice-factory/shared-models';
 import { Button, Card, Field, Input, PageHeader, PageLoader, useToast } from '../../components';
-import { buildAuthConfig, logout } from '../../lib/auth';
+import { buildAuthConfig, getUserId, logout } from '../../lib/auth';
 import { formatCurrency } from '../../lib/pricing';
+import { readCache, writeCache } from '../../lib/swr-cache';
 import './styles/shop.css';
 
 /* ── Razorpay window type ── */
@@ -107,6 +108,33 @@ const ShopPage: React.FC = () => {
   useEffect(() => { loadRazorpayScript().catch(() => {}); }, []);
 
   /* ── Fetch shop data (mount + refresh after stock conflicts) ── */
+  interface ShopData {
+    plants?: Plant[]; iceTypes?: IceType[]; discountTiers?: DiscountTier[]; stock?: StockInfo[];
+    profile?: { name: string; mobile: string; address: string } | null;
+  }
+  const cacheKey = `nif:shop:${getUserId() ?? 'anon'}`;
+
+  const applyShopData = (data: ShopData | null, initial: boolean) => {
+    const plantList    = Array.isArray(data?.plants)         ? data!.plants         : [];
+    const iceTypeList  = Array.isArray(data?.iceTypes)       ? data!.iceTypes       : [];
+    const tierList     = Array.isArray(data?.discountTiers)  ? data!.discountTiers  : [];
+    const stockList    = Array.isArray(data?.stock)          ? data!.stock          : [];
+    setPlants(plantList);
+    setAllIceTypes(iceTypeList);
+    setDiscountTiers(tierList);
+    setStock(stockList);
+    if (initial) {
+      if (plantList.length > 0) selectPlant(plantList[0].plantName, iceTypeList);
+      // Prefill details from the customer's last order — only untouched fields
+      if (data?.profile) {
+        setName((v) => v || data.profile!.name || '');
+        setMobile((v) => v || data.profile!.mobile || '');
+        setAddress((v) => v || data.profile!.address || '');
+      }
+      setPageStatus('idle');
+    }
+  };
+
   const fetchShop = async (initial: boolean) => {
     try {
       const res = await svc.getShopData(buildAuthConfig());
@@ -114,29 +142,9 @@ const ShopPage: React.FC = () => {
       if (!res?.status) throw new Error(res?.internalMessage || 'Failed to load shop');
 
       const env  = res.data as ResponsePayloadRecord | null;
-      const data = (env?.['data'] ?? env) as {
-        plants?: Plant[]; iceTypes?: IceType[]; discountTiers?: DiscountTier[]; stock?: StockInfo[];
-        profile?: { name: string; mobile: string; address: string } | null;
-      } | null;
-
-      const plantList    = Array.isArray(data?.plants)         ? data!.plants         : [];
-      const iceTypeList  = Array.isArray(data?.iceTypes)       ? data!.iceTypes       : [];
-      const tierList     = Array.isArray(data?.discountTiers)  ? data!.discountTiers  : [];
-      const stockList    = Array.isArray(data?.stock)          ? data!.stock          : [];
-      setPlants(plantList);
-      setAllIceTypes(iceTypeList);
-      setDiscountTiers(tierList);
-      setStock(stockList);
-      if (initial) {
-        if (plantList.length > 0) selectPlant(plantList[0].plantName, iceTypeList);
-        // Prefill details from the customer's last order — only untouched fields
-        if (data?.profile) {
-          setName((v) => v || data.profile!.name || '');
-          setMobile((v) => v || data.profile!.mobile || '');
-          setAddress((v) => v || data.profile!.address || '');
-        }
-        setPageStatus('idle');
-      }
+      const data = (env?.['data'] ?? env) as ShopData | null;
+      writeCache(cacheKey, data);
+      applyShopData(data, initial);
     } catch (err) {
       if (abortRef.current) return;
       if (!handleAuthError(err) && initial) setPageStatus('error');
@@ -145,7 +153,15 @@ const ShopPage: React.FC = () => {
 
   useEffect(() => {
     abortRef.current = false;
-    fetchShop(true);
+    // Render instantly from this session's cache, then refresh in the
+    // background — the spinner only ever shows on the first visit.
+    const cached = readCache<ShopData>(cacheKey, 10 * 60_000);
+    if (cached) {
+      applyShopData(cached, true);
+      fetchShop(false);
+    } else {
+      fetchShop(true);
+    }
     return () => { abortRef.current = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
