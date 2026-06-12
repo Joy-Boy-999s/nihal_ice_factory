@@ -40,7 +40,7 @@ order ice online (or over WhatsApp) with online payment or pay-on-delivery.
 - A MySQL 8 database
 - A Gmail account or SMTP-compatible mailbox (password reset emails)
 - Razorpay account (test keys work) for online payments
-- Optional: Meta WhatsApp Business Cloud API app for WhatsApp ordering
+- Optional: Meta WhatsApp Business Cloud API app for WhatsApp ordering — see [whatsapp-setup.md](whatsapp-setup.md)
 
 ## Install
 
@@ -100,7 +100,7 @@ CI (`.github/workflows/ci.yml`) runs lint/test/build for affected projects on pu
 | `RAZORPAY_WEBHOOK_SECRET` | recommended | verifies `POST /payment/webhook` (configure the webhook in the Razorpay dashboard with events `payment.captured`, `payment.failed`, `order.paid`) |
 | `ALLOWED_ORIGINS` | prod | comma-separated CORS allowlist; defaults to `http://localhost:4200,https://nihal-ice-factory.vercel.app` — **add any new frontend domain here** |
 | `APP_WEB_URL` | no | frontend URL used in WhatsApp replies |
-| `WHATSAPP_VERIFY_TOKEN` / `WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` / `WHATSAPP_APP_SECRET` | for WhatsApp | Meta Cloud API; webhook URL is `https://<api>/whatsapp/webhook` subscribed to `messages`. Features stay dormant when unset |
+| `WHATSAPP_VERIFY_TOKEN` / `WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` / `WHATSAPP_APP_SECRET` | for WhatsApp | Meta Cloud API — full walkthrough in [whatsapp-setup.md](whatsapp-setup.md). Features stay dormant when unset |
 | `LOG_LEVEL` | no | comma-separated Nest log levels (prod default `log,warn,error`) |
 | `PORT` | no | injected by the host; defaults to 3000 |
 | `NODE_ENV` | — | `development` loads `.env` from the repo; production uses host env vars and JSON logs |

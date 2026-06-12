@@ -361,9 +361,10 @@ Without it, payment status relies on the browser completing checkout.
 5. Restart the backend: `pm2 restart ice-factory-api`
 
 ### WhatsApp ordering + alerts (optional)
+Full step-by-step guide: **`whatsapp-setup.md`**. Summary:
 1. Create a Meta app at developers.facebook.com → add the **WhatsApp** product
-2. Webhook URL: `http://<server-ip>:3000/whatsapp/webhook`, subscribe to **messages**,
-   verify token = your `WHATSAPP_VERIFY_TOKEN`
+2. Webhook URL: `https://<server>/whatsapp/webhook` (Meta requires HTTPS), subscribe to
+   **messages**, verify token = your `WHATSAPP_VERIFY_TOKEN`
 3. Fill all four `WHATSAPP_*` vars in `.env` and restart the backend
 4. Only registered users with a linked mobile can order — customers auto-link on their
    first in-app order; staff link via the user menu ("Link WhatsApp number")
